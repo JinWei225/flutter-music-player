@@ -1,5 +1,3 @@
-import 'dart:io';
-
 import 'package:custom_music_player/core/library/library_model.dart';
 import 'package:custom_music_player/core/player/player_model.dart';
 import 'package:custom_music_player/platform/library_source.dart';
@@ -20,13 +18,10 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 import 'player_test.dart' show FakeAudioBackend;
 
-/// Drives the real UI against the real ~/Music library, with only the audio
+/// Drives the real UI against the real on-disk library, with only the audio
 /// engine faked out.
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
-
-  final musicDir = Directory(
-      '${Platform.environment['HOME']}${Platform.pathSeparator}Music');
 
   late FakeAudioBackend audio;
   late PlayerModel player;
@@ -54,7 +49,7 @@ void main() {
 
   /// The window must be wide enough for the sidebar + player bar layout.
   ///
-  /// Scanning ~/Music is real file I/O, and it has to run inside `runAsync`:
+  /// Scanning the music folders is real file I/O, and it has to run inside `runAsync`:
   /// a widget test drives a fake clock, against which a real I/O future would
   /// never complete.
   Future<void> pumpApp(WidgetTester tester, {Size size = const Size(1600, 1000)}) async {
@@ -67,7 +62,7 @@ void main() {
       settings = await SettingsStore.open();
       audio = FakeAudioBackend();
       player = PlayerModel(settings, audio: audio);
-      library = LibraryModel(DirectoryLibrarySource(musicDir));
+      library = LibraryModel(DirectoryLibrarySource.defaultLocation());
       await library.load();
     });
 
@@ -91,7 +86,7 @@ void main() {
     // Titles come from the m4a tags, not the filenames.
     expect(find.text('ABCD'), findsWidgets);
     expect(find.text('Magic (feat. JULIE)'), findsWidgets);
-    expect(find.text("Can't Slow Me, No"), findsWidgets);
+    expect(find.text('Can’t Slow Me, No'), findsWidgets);
   });
 
   testWidgets('sorting by artist reorders the list', (tester) async {
@@ -177,9 +172,9 @@ void main() {
 
     expect(find.text('2 albums'), findsOneWidget);
     expect(find.text('NA'), findsWidgets);
-    expect(find.text('Air - EP'), findsWidgets);
+    expect(find.text('AIR - EP'), findsWidgets);
 
-    await tester.tap(find.text('Air - EP').first);
+    await tester.tap(find.text('AIR - EP').first);
     await tester.pumpAndSettle();
 
     // Detail page: header, metadata line, and the two action buttons.
@@ -195,7 +190,7 @@ void main() {
 
     await tester.tap(find.text('Albums'));
     await tester.pumpAndSettle();
-    await tester.tap(find.text('Air - EP').first);
+    await tester.tap(find.text('AIR - EP').first);
     await tester.pumpAndSettle();
     await tester.tap(find.text('Play All'));
     await tester.pumpAndSettle();
@@ -381,7 +376,7 @@ void main() {
       await tester.pumpAndSettle();
       expect(find.text('2 albums'), findsOneWidget);
 
-      await tester.tap(find.text('Air - EP').first);
+      await tester.tap(find.text('AIR - EP').first);
       await tester.pumpAndSettle();
       expect(find.text('Play All'), findsOneWidget);
 

@@ -29,8 +29,21 @@ Supported files: `.m4a`, `.mp4`, `.m4b`, `.mp3`, `.aac`.
 
 | Platform | Library source |
 | --- | --- |
-| Linux, macOS, Windows | `~/Music` (`%USERPROFILE%\Music` on Windows), scanned recursively |
+| Linux, Windows | `~/Music` (`%USERPROFILE%\Music` on Windows), scanned recursively |
+| macOS | `~/Music`, plus the Apple Music library at `~/Music/Music/Media.localized` |
 | Android | The system media library (MediaStore) |
+
+Set `MEWSIC_MUSIC_DIR` to scan somewhere else instead — one path, or several
+separated by `:` (`;` on Windows):
+
+```bash
+MEWSIC_MUSIC_DIR="$HOME/Music/Music/Media.localized" flutter run -d macos
+```
+
+On macOS the Apple Music library is named as a folder of its own because the
+system fences it off behind the **Media & Apple Music** privacy permission: a
+plain walk of `~/Music` is turned away at that door and would otherwise report
+an empty library rather than a refused one.
 
 ## Building and running
 
@@ -118,6 +131,12 @@ once.
 The macOS runner is sandboxed, and the entitlements grant read access to
 `~/Music`. Without that entitlement the song list comes up empty.
 
+Songs managed by Apple Music live in `~/Music/Music/Media.localized`, which
+macOS protects separately. The first launch asks for **Media & Apple Music**
+access; if it was declined, turn it back on in *System Settings → Privacy &
+Security → Media & Apple Music* and reopen the app. Until then Mewsic says so
+on its empty state instead of pretending the library is empty.
+
 ### Windows
 
 Needs Visual Studio 2022 with the **Desktop development with C++** workload
@@ -143,10 +162,11 @@ The suite covers tag parsing, album grouping, sorting, the queue with shuffle
 and repeat, volume persistence, and both the desktop and phone layouts.
 
 Most tests build their own fixtures, but `test/metadata_test.dart` and
-`test/ui_test.dart` read the real `~/Music` and assert against the specific
-library they were written for (11 tracks, two albums). **They will fail on a
-fresh clone with a different library** — that is expected; the rest of the
-suite is self-contained.
+`test/ui_test.dart` read the real music folders and assert against the
+specific library they were written for (11 tracks, two albums). **They will
+fail on a fresh clone with a different library** — that is expected; the rest
+of the suite is self-contained. `MEWSIC_MUSIC_DIR` points them at a fixture
+library if you have one.
 
 `packaging/make_icons.py` generates every icon from the same Material glyph
 the app shows in its sidebar, so the launcher, notification and in-app marks

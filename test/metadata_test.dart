@@ -7,17 +7,17 @@ import 'package:custom_music_player/core/models/track.dart';
 import 'package:custom_music_player/platform/library_source.dart';
 import 'package:flutter_test/flutter_test.dart';
 
-/// These run against the real iTunes files in ~/Music. They are the check that
-/// tag reading works on actual store-bought AAC, not just synthetic fixtures.
+/// These run against the real iTunes files in the platform's own music
+/// folders. They are the check that tag reading works on actual store-bought
+/// AAC, not just synthetic fixtures.
 void main() {
-  final musicDir = Directory(
-      '${Platform.environment['HOME']}${Platform.pathSeparator}Music');
+  final source = DirectoryLibrarySource.defaultLocation();
 
   group('iTunes m4a metadata', () {
     late List<Track> tracks;
 
     setUpAll(() async {
-      tracks = await DirectoryLibrarySource(musicDir).loadTracks();
+      tracks = await source.loadTracks();
     });
 
     test('finds every audio file', () {
@@ -51,7 +51,7 @@ void main() {
 
     test('preserves punctuation and parentheses in titles', () {
       final titles = tracks.map((t) => t.title).toSet();
-      expect(titles, contains("Can't Slow Me, No"));
+      expect(titles, contains('Can’t Slow Me, No'));
       expect(titles, contains('Magic (feat. JULIE)'));
       expect(titles,
           contains('HalliGalli (Prod. by LEE CHANHYUK of AKMU)'));
@@ -59,9 +59,9 @@ void main() {
 
     test('groups into the two expected albums, in track order', () {
       final albums = Album.group(tracks);
-      expect(albums.map((a) => a.name).toList(), ['Air - EP', 'NA']);
+      expect(albums.map((a) => a.name).toList(), ['AIR - EP', 'NA']);
 
-      final air = albums.firstWhere((a) => a.name == 'Air - EP');
+      final air = albums.firstWhere((a) => a.name == 'AIR - EP');
       expect(air.artist, 'YEJI');
       expect(air.tracks.length, 4);
       expect(air.tracks.map((t) => t.trackNumber), [1, 2, 3, 4]);
@@ -78,7 +78,7 @@ void main() {
     late LibraryModel library;
 
     setUpAll(() async {
-      library = LibraryModel(DirectoryLibrarySource(musicDir));
+      library = LibraryModel(source);
       await library.load();
     });
 
@@ -96,15 +96,17 @@ void main() {
     test('artist sort groups an artist together', () {
       library.setSort(SortField.artist, SortDirection.ascending);
       final artists = library.sortedTracks.map((t) => t.artist).toList();
-      // NAYEON's 7 come before YEJI's 4, with no interleaving.
-      expect(artists.take(7).toSet(), {'NAYEON'});
+      // The 7 NA tracks come before YEJI's 4, with no interleaving. One of
+      // them is credited to a collaboration, which sorts inside NAYEON's run
+      // rather than breaking it up.
+      expect(artists.take(7).toSet(), {'NAYEON', 'NAYEON & SAM KIM'});
       expect(artists.skip(7).toSet(), {'YEJI'});
     });
 
     test('album sort orders by album then track number', () {
       library.setSort(SortField.album, SortDirection.ascending);
       final sorted = library.sortedTracks;
-      expect(sorted.take(4).map((t) => t.album).toSet(), {'Air - EP'});
+      expect(sorted.take(4).map((t) => t.album).toSet(), {'AIR - EP'});
       expect(sorted.take(4).map((t) => t.trackNumber), [1, 2, 3, 4]);
       expect(sorted.skip(4).map((t) => t.trackNumber), [1, 2, 3, 4, 5, 6, 7]);
     });

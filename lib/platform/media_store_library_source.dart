@@ -9,16 +9,6 @@ import '../core/metadata/tag_reader.dart';
 import '../core/models/track.dart';
 import 'library_source.dart';
 
-/// Thrown when the user declines audio access, so the UI can say so plainly.
-class LibraryPermissionException implements Exception {
-  final String message;
-
-  const LibraryPermissionException(this.message);
-
-  @override
-  String toString() => message;
-}
-
 /// Android library, read from MediaStore.
 ///
 /// Scoped storage rules out walking a music folder the way the desktop build
