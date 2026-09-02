@@ -6,18 +6,41 @@ The glyph is the same Material icon the app shows in its sidebar header
 so the launcher icon and the in-app logo stay identical.
 """
 import os
+import shutil
 import sys
 
 from PIL import Image, ImageDraw, ImageFont
 
 GLYPH = 0xF7BD  # Icons.graphic_eq_rounded
-ACCENT_TOP = (140, 124, 246)  # #8C7CF6
-ACCENT_BOTTOM = (98, 79, 224)  # #624FE0
+ACCENT_TOP = (148, 199, 88)  # #94C758
+ACCENT_BOTTOM = (113, 146, 74)  # #71924A
 SIZES = [16, 24, 32, 48, 64, 128, 256, 512]
 
-FONT = os.path.expanduser(
-    "~/dev/flutter/bin/cache/artifacts/material_fonts/MaterialIcons-Regular.otf"
-)
+FONT_RELATIVE = "bin/cache/artifacts/material_fonts/MaterialIcons-Regular.otf"
+
+
+def find_font():
+    """Locate the MaterialIcons font inside the Flutter SDK.
+
+    The SDK lands somewhere different depending on how it was installed --
+    Homebrew, a git clone, the Google installer -- so follow `flutter` on PATH
+    instead of trusting one machine's layout. MEWSIC_MATERIAL_FONT overrides.
+    """
+    override = os.environ.get("MEWSIC_MATERIAL_FONT")
+    if override:
+        return override
+
+    flutter = shutil.which("flutter")
+    if flutter:
+        root = os.path.dirname(os.path.dirname(os.path.realpath(flutter)))
+        candidate = os.path.join(root, FONT_RELATIVE)
+        if os.path.exists(candidate):
+            return candidate
+
+    return os.path.expanduser(f"~/dev/flutter/{FONT_RELATIVE}")
+
+
+FONT = find_font()
 
 
 def rounded_mask(size, radius):
@@ -108,6 +131,23 @@ def write_android(res_dir):
         print("wrote", make_notification(size, os.path.join(d, "ic_notification.png")))
 
 
+# The sizes macOS asks for in AppIcon.appiconset/Contents.json. 16 through 512
+# each appear twice, once at 1x and once as the 2x of the size below it, so one
+# file per pixel dimension covers every entry.
+MACOS_SIZES = [16, 32, 64, 128, 256, 512, 1024]
+
+
+def write_macos(iconset_dir):
+    """Fill in AppIcon.appiconset, replacing Flutter's stock logo."""
+    for size in MACOS_SIZES:
+        make(size, iconset_dir)
+        os.replace(
+            os.path.join(iconset_dir, f"{size}.png"),
+            os.path.join(iconset_dir, f"app_icon_{size}.png"),
+        )
+        print("wrote", os.path.join(iconset_dir, f"app_icon_{size}.png"))
+
+
 NOTE_GLYPH = 0xF8ED  # Icons.music_note_rounded
 
 
@@ -139,6 +179,10 @@ def main():
 
     if len(sys.argv) > 2 and sys.argv[1] == "--android":
         write_android(sys.argv[2])
+        return
+
+    if len(sys.argv) > 2 and sys.argv[1] == "--macos":
+        write_macos(sys.argv[2])
         return
 
     if len(sys.argv) > 2 and sys.argv[1] == "--album-placeholder":

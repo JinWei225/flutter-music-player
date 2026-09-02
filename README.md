@@ -151,6 +151,39 @@ alongside its DLLs and a `data` folder. There is no installer: copy that whole
 folder somewhere such as `C:\Program Files\Mewsic` and make a shortcut to the
 executable. Keep the folder together — the executable will not run on its own.
 
+## What is platform-specific
+
+Most of the app is shared. These are the parts that only matter on one
+platform — worth knowing which changes to ignore when you pick the project up
+on a different machine.
+
+| Path | Applies to |
+| --- | --- |
+| `macos/Runner/Assets.xcassets/AppIcon.appiconset/` | macOS only |
+| `macos/Runner/*.entitlements` | macOS only |
+| The second root in `MusicFolders.resolve()` | macOS only |
+| `android/app/src/main/res/mipmap-*` and `drawable-*` | Android only |
+| `MediaStoreLibrarySource` | Android only |
+| `_accent` in `lib/ui/theme.dart` | every platform |
+| `ACCENT_TOP` / `ACCENT_BOTTOM` in `packaging/make_icons.py` | every platform |
+
+The macOS entitlement `com.apple.security.assets.music.read-only` is what lets
+the sandboxed app read `~/Music`; nothing else grants it. The extra scan root
+is `~/Music/Music/Media.localized`, where Apple Music keeps purchased songs —
+Linux and Windows scan `~/Music` alone and never see that path.
+
+The accent colour lives in two places that do not talk to each other. Dart
+never reads the icon gradient, so changing `_accent` alone leaves the launcher
+icon on the old colour. Change both, then regenerate:
+
+```bash
+python3 packaging/make_icons.py --macos macos/Runner/Assets.xcassets/AppIcon.appiconset
+python3 packaging/make_icons.py --android android/app/src/main/res
+```
+
+Both commands rewrite committed PNGs, so expect icon files in your diff even
+when you only meant to touch one platform.
+
 ## Development
 
 ```bash
