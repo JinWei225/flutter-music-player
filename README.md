@@ -20,8 +20,10 @@ macOS and Windows targets in the tree.
 - **Light and dark themes**, remembered between launches.
 - **Background playback on Android**, with lock-screen and notification
   controls and cover art.
-- Layout adapts: a sidebar and full player bar on desktop, bottom navigation
-  and a mini player that expands to a full now-playing screen on a phone.
+- Layout adapts to the window: a sidebar, full player bar and a docked
+  Now Playing panel (art and queue) on desktop; an icon rail with Now Playing
+  sliding over the library on a tablet held upright; bottom navigation and a
+  mini player that expands to a full now-playing screen on a phone.
 
 Supported files: `.m4a`, `.mp4`, `.m4b`, `.mp3`, `.aac`.
 

@@ -4,6 +4,7 @@ import 'package:provider/provider.dart';
 import '../../core/library/library_model.dart';
 import '../../core/models/track.dart';
 import '../../core/player/player_model.dart';
+import '../breakpoints.dart';
 import '../theme.dart';
 import '../widgets/track_row.dart';
 
@@ -70,6 +71,10 @@ class _Header extends StatelessWidget {
     return LayoutBuilder(
       builder: (context, constraints) {
         final compact = constraints.maxWidth < 640;
+        // The sidebar carries the theme toggle everywhere but on a phone, so
+        // only put it in the header when there is no sidebar.
+        final showThemeToggle =
+            MediaQuery.sizeOf(context).width < kCompactBreakpoint;
 
         final heading = Text(
           'All Songs',
@@ -97,17 +102,18 @@ class _Header extends StatelessWidget {
                     // only half of it, truncating to "All S...".
                     Expanded(child: heading),
                     const _SortControl(),
-                    IconButton(
-                      onPressed: theme.toggle,
-                      icon: Icon(
-                        theme.isDark
-                            ? Icons.light_mode_rounded
-                            : Icons.dark_mode_rounded,
-                        size: 20,
+                    if (showThemeToggle)
+                      IconButton(
+                        onPressed: theme.toggle,
+                        icon: Icon(
+                          theme.isDark
+                              ? Icons.light_mode_rounded
+                              : Icons.dark_mode_rounded,
+                          size: 20,
+                        ),
+                        color: scheme.onSurfaceVariant,
+                        tooltip: theme.isDark ? 'Light mode' : 'Dark mode',
                       ),
-                      color: scheme.onSurfaceVariant,
-                      tooltip: theme.isDark ? 'Light mode' : 'Dark mode',
-                    ),
                   ],
                 ),
                 if (tracks.isNotEmpty) ...[
@@ -126,7 +132,9 @@ class _Header extends StatelessWidget {
           padding: const EdgeInsets.fromLTRB(16, 18, 16, 12),
           child: Row(
             children: [
-              heading,
+              // Flexible so the heading yields to the controls, not the
+              // other way round, when the body is only just wide enough.
+              Flexible(child: heading),
               const SizedBox(width: 10),
               Padding(
                 padding: const EdgeInsets.only(top: 5),
@@ -166,7 +174,7 @@ class _PlayAllButtons extends StatelessWidget {
       onPressed: () =>
           player.playTracks(tracks, startIndex: 0, shuffle: false),
       icon: const Icon(Icons.play_arrow_rounded, size: 18),
-      label: const Text('Play All'),
+      label: const Text('Play All', maxLines: 1, overflow: TextOverflow.ellipsis),
       style: FilledButton.styleFrom(
         visualDensity: fillWidth ? null : VisualDensity.compact,
         padding: EdgeInsets.symmetric(
@@ -177,7 +185,7 @@ class _PlayAllButtons extends StatelessWidget {
     final shuffle = OutlinedButton.icon(
       onPressed: () => player.playTracks(tracks, shuffle: true),
       icon: const Icon(Icons.shuffle_rounded, size: 16),
-      label: const Text('Shuffle'),
+      label: const Text('Shuffle', maxLines: 1, overflow: TextOverflow.ellipsis),
       style: OutlinedButton.styleFrom(
         visualDensity: fillWidth ? null : VisualDensity.compact,
         padding: EdgeInsets.symmetric(

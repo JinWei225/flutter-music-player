@@ -6,9 +6,9 @@ import 'package:custom_music_player/ui/pages/all_songs_page.dart';
 import 'package:custom_music_player/ui/shell.dart';
 import 'package:custom_music_player/ui/theme.dart';
 import 'package:custom_music_player/ui/widgets/mini_player.dart';
+import 'package:custom_music_player/ui/widgets/now_playing_panel.dart';
 import 'package:custom_music_player/ui/widgets/now_playing_sheet.dart';
 import 'package:custom_music_player/ui/widgets/player_bar.dart';
-import 'package:custom_music_player/ui/widgets/queue_panel.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
 import 'package:flutter/services.dart';
@@ -52,7 +52,10 @@ void main() {
   /// Scanning the music folders is real file I/O, and it has to run inside `runAsync`:
   /// a widget test drives a fake clock, against which a real I/O future would
   /// never complete.
-  Future<void> pumpApp(WidgetTester tester, {Size size = const Size(1600, 1000)}) async {
+  Future<void> pumpApp(
+    WidgetTester tester, {
+    Size size = const Size(1600, 1000),
+  }) async {
     tester.view.physicalSize = size;
     tester.view.devicePixelRatio = 1.0;
     addTearDown(tester.view.reset);
@@ -122,19 +125,25 @@ void main() {
     expect(find.byTooltip('Sort: Artist Z-A'), findsOneWidget);
   });
 
-  testWidgets('the phone header fits without scrolling or wrapping',
-      (tester) async {
+  testWidgets('the phone header fits without scrolling or wrapping', (
+    tester,
+  ) async {
     await pumpApp(tester, size: const Size(400, 860));
 
     // The sort control used to sit behind a horizontal scroll, off-screen.
-    expect(tester.getRect(find.byTooltip('Sort: Title A-Z')).right,
-        lessThanOrEqualTo(400));
+    expect(
+      tester.getRect(find.byTooltip('Sort: Title A-Z')).right,
+      lessThanOrEqualTo(400),
+    );
 
     // And the action labels must stay on one line; when the sort menu shared
     // this row they wrapped to "Play / All" and "Shuffl / e".
     for (final label in ['Play All', 'Shuffle']) {
-      expect(tester.getSize(find.text(label)).height, lessThan(24),
-          reason: '"$label" wrapped onto a second line');
+      expect(
+        tester.getSize(find.text(label)).height,
+        lessThan(24),
+        reason: '"$label" wrapped onto a second line',
+      );
       expect(tester.getRect(find.text(label)).right, lessThanOrEqualTo(400));
     }
 
@@ -145,8 +154,11 @@ void main() {
         matching: find.text('All Songs'),
       ),
     );
-    expect(heading.didExceedMaxLines, isFalse,
-        reason: 'the "All Songs" heading was truncated');
+    expect(
+      heading.didExceedMaxLines,
+      isFalse,
+      reason: 'the "All Songs" heading was truncated',
+    );
   });
 
   testWidgets('clicking a song plays that exact file', (tester) async {
@@ -163,8 +175,9 @@ void main() {
     expect(player.isPlaying, isTrue);
   });
 
-  testWidgets('Albums shows both albums and opens a detail page',
-      (tester) async {
+  testWidgets('Albums shows both albums and opens a detail page', (
+    tester,
+  ) async {
     await pumpApp(tester);
 
     await tester.tap(find.text('Albums'));
@@ -197,10 +210,7 @@ void main() {
 
     expect(player.shuffle, isFalse);
     expect(player.currentTrack?.title, 'Air');
-    expect(
-      player.queueInPlayOrder.map((t) => t.trackNumber),
-      [1, 2, 3, 4],
-    );
+    expect(player.queueInPlayOrder.map((t) => t.trackNumber), [1, 2, 3, 4]);
   });
 
   testWidgets('album Shuffle plays the album with shuffle on', (tester) async {
@@ -218,27 +228,64 @@ void main() {
     expect(player.queueInPlayOrder.map((t) => t.album).toSet(), {'NA'});
   });
 
-  testWidgets('the queue button opens the queue panel', (tester) async {
+  testWidgets('Now Playing opens by itself on a wide window', (tester) async {
     await pumpApp(tester);
+
+    // Nothing to show yet, so the panel stays out of the way.
+    expect(find.byType(NowPlayingPanel), findsNothing);
 
     await tester.tap(find.text('ABCD').first);
     await tester.pumpAndSettle();
 
-    expect(find.text('Queue'), findsNothing);
-    await tester.tap(find.byTooltip('Show queue'));
-    await tester.pumpAndSettle();
+    expect(find.byType(NowPlayingPanel), findsOneWidget);
+    expect(find.text('Up next'), findsOneWidget);
+    expect(find.textContaining(RegExp(r'^\d+ of 11$')), findsOneWidget);
+    // The player bar keeps the transport; the panel does not repeat it.
+    expect(find.byTooltip('Next'), findsOneWidget);
 
-    expect(find.text('Queue'), findsOneWidget);
-    expect(find.text('11 songs'), findsWidgets);
-
-    // Both the panel's close button and the player-bar toggle say "Hide
-    // queue"; use the panel's own one.
-    await tester.tap(find.descendant(
-      of: find.byType(QueuePanel),
-      matching: find.byTooltip('Hide queue'),
-    ));
+    // Both the panel's close button and the player-bar toggle say "Hide Now
+    // Playing"; use the panel's own one.
+    await tester.tap(
+      find.descendant(
+        of: find.byType(NowPlayingPanel),
+        matching: find.byTooltip('Hide Now Playing'),
+      ),
+    );
     await tester.pumpAndSettle();
-    expect(find.text('Queue'), findsNothing);
+    expect(find.byType(NowPlayingPanel), findsNothing);
+
+    // Once closed it stays closed for the next track...
+    await tester.tap(find.text('Air').first);
+    await tester.pumpAndSettle();
+    expect(find.byType(NowPlayingPanel), findsNothing);
+
+    // ...until asked for again.
+    await tester.tap(find.byTooltip('Show Now Playing'));
+    await tester.pumpAndSettle();
+    expect(find.byType(NowPlayingPanel), findsOneWidget);
+  });
+
+  testWidgets('on a smaller window Now Playing docks only when asked', (
+    tester,
+  ) async {
+    // Wide enough for the full sidebar, too narrow to auto-open the panel.
+    await pumpApp(tester, size: const Size(1100, 800));
+
+    await tester.tap(find.text('ABCD').first);
+    await tester.pumpAndSettle();
+    expect(find.byType(NowPlayingPanel), findsNothing);
+
+    await tester.tap(find.byTooltip('Show Now Playing'));
+    await tester.pumpAndSettle();
+    expect(find.byType(NowPlayingPanel), findsOneWidget);
+
+    // Docked, not overlaid: the panel ends at the window edge and the
+    // library is still clickable beside it.
+    expect(tester.getRect(find.byType(NowPlayingPanel)).right, 1100);
+    await tester.tap(find.text('Air').first);
+    await tester.pumpAndSettle();
+    expect(player.currentTrack?.title, 'Air');
+    expect(find.byType(NowPlayingPanel), findsOneWidget);
   });
 
   testWidgets('Space toggles play and pause', (tester) async {
@@ -293,8 +340,9 @@ void main() {
     expect(find.byTooltip('Repeat: off'), findsOneWidget);
   });
 
-  testWidgets('the theme toggle switches between dark and light',
-      (tester) async {
+  testWidgets('the theme toggle switches between dark and light', (
+    tester,
+  ) async {
     await pumpApp(tester);
 
     // Dark is the default, so the toggle offers light.
@@ -316,12 +364,62 @@ void main() {
     expect(settings.volume, closeTo(0.33, 1e-9));
   });
 
+  group('medium (portrait tablet) layout', () {
+    // A 10-inch tablet held upright: past the phone breakpoint, but with no
+    // room for the labelled sidebar and a docked panel.
+    const tablet = Size(800, 1200);
+
+    testWidgets('collapses the sidebar to an icon rail', (tester) async {
+      await pumpApp(tester, size: tablet);
+
+      expect(find.byType(PlayerBar), findsOneWidget);
+      // Labels live in tooltips now; "Albums" is not drawn anywhere.
+      expect(find.text('Albums'), findsNothing);
+      expect(find.byTooltip('Albums'), findsOneWidget);
+      expect(find.text('Light mode'), findsNothing);
+      expect(find.byTooltip('Light mode'), findsOneWidget);
+
+      await tester.tap(find.byTooltip('Albums'));
+      await tester.pumpAndSettle();
+      expect(find.text('2 albums'), findsOneWidget);
+    });
+
+    testWidgets('Now Playing slides over the library and dismisses on tap', (
+      tester,
+    ) async {
+      await pumpApp(tester, size: tablet);
+
+      await tester.tap(find.text('ABCD').first);
+      await tester.pumpAndSettle();
+      // Parked off-screen until asked for.
+      expect(
+        tester.getRect(find.byType(NowPlayingPanel)).left,
+        greaterThanOrEqualTo(800),
+      );
+
+      await tester.tap(find.byTooltip('Show Now Playing'));
+      await tester.pumpAndSettle();
+      expect(tester.getRect(find.byType(NowPlayingPanel)).right, 800);
+      expect(find.text('Up next'), findsOneWidget);
+
+      // Tapping the dimmed library closes the panel instead of hitting a song.
+      await tester.tapAt(const Offset(150, 400));
+      await tester.pumpAndSettle();
+      expect(player.currentTrack?.title, 'ABCD');
+      expect(
+        tester.getRect(find.byType(NowPlayingPanel)).left,
+        greaterThanOrEqualTo(800),
+      );
+    });
+  });
+
   group('compact (phone) layout', () {
     // A typical phone in logical pixels; well under the 700 breakpoint.
     const phone = Size(400, 860);
 
-    testWidgets('uses bottom navigation and a mini player, without overflow',
-        (tester) async {
+    testWidgets('uses bottom navigation and a mini player, without overflow', (
+      tester,
+    ) async {
       await pumpApp(tester, size: phone);
 
       expect(find.byType(NavigationBar), findsOneWidget);
@@ -333,8 +431,9 @@ void main() {
       expect(find.text('ABCD'), findsWidgets);
     });
 
-    testWidgets('the album column is dropped on a narrow screen',
-        (tester) async {
+    testWidgets('the album column is dropped on a narrow screen', (
+      tester,
+    ) async {
       await pumpApp(tester, size: phone);
 
       expect(find.text('TITLE'), findsOneWidget);
@@ -344,8 +443,9 @@ void main() {
       expect(find.text('NAYEON'), findsWidgets);
     });
 
-    testWidgets('tapping a song then the mini player opens the full player',
-        (tester) async {
+    testWidgets('tapping a song then the mini player opens the full player', (
+      tester,
+    ) async {
       await pumpApp(tester, size: phone);
 
       await tester.tap(find.text('ABCD').first);
@@ -368,8 +468,9 @@ void main() {
       expect(inSheet(find.text('Queue')), findsOneWidget);
     });
 
-    testWidgets('navigating to Albums works from the bottom bar',
-        (tester) async {
+    testWidgets('navigating to Albums works from the bottom bar', (
+      tester,
+    ) async {
       await pumpApp(tester, size: phone);
 
       await tester.tap(find.text('Albums'));

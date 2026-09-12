@@ -75,29 +75,45 @@ class _TrackRowState extends State<TrackRow> {
                 children: [
                   SizedBox(
                     width: 34,
-                    child: _hovered
-                        ? IconButton(
-                            onPressed: widget.onPlay,
-                            icon: const Icon(Icons.play_arrow_rounded, size: 18),
-                            color: scheme.onSurface,
-                            visualDensity: VisualDensity.compact,
-                            padding: EdgeInsets.zero,
-                            constraints: const BoxConstraints(),
-                            tooltip: 'Play',
-                          )
-                        : widget.isCurrent
-                            ? Icon(Icons.equalizer_rounded,
-                                size: 16, color: scheme.primary)
-                            : Text(
-                                widget.leading,
-                                style: TextStyle(
-                                  fontSize: 12,
-                                  fontFeatures: const [
-                                    FontFeature.tabularFigures()
-                                  ],
-                                  color: scheme.onSurfaceVariant,
-                                ),
+                    // Left-aligned so the play and now-playing icons line up
+                    // with the track numbers instead of centring in the
+                    // column. The icons are then nudged left by the blank
+                    // margin inside their own glyph box (the triangle starts
+                    // 8/24 of the way in, the equalizer bars 4/24), so it is
+                    // the drawn shape, not the box, that meets the digits.
+                    child: Align(
+                      alignment: Alignment.centerLeft,
+                      child: _hovered
+                          ? Transform.translate(
+                              offset: const Offset(-18 * 8 / 24, 0),
+                              child: IconButton(
+                                onPressed: widget.onPlay,
+                                icon: const Icon(Icons.play_arrow_rounded,
+                                    size: 18),
+                                color: scheme.onSurface,
+                                visualDensity: VisualDensity.compact,
+                                padding: EdgeInsets.zero,
+                                constraints: const BoxConstraints(),
+                                tooltip: 'Play',
                               ),
+                            )
+                          : widget.isCurrent
+                              ? Transform.translate(
+                                  offset: const Offset(-16 * 4 / 24, 0),
+                                  child: Icon(Icons.equalizer_rounded,
+                                      size: 16, color: scheme.primary),
+                                )
+                              : Text(
+                                  widget.leading,
+                                  style: TextStyle(
+                                    fontSize: 12,
+                                    fontFeatures: const [
+                                      FontFeature.tabularFigures()
+                                    ],
+                                    color: scheme.onSurfaceVariant,
+                                  ),
+                                ),
+                    ),
                   ),
                   Expanded(
                     child: Column(

@@ -109,7 +109,7 @@ class AlbumDetailPage extends StatelessWidget {
       onPressed: () =>
           player.playTracks(album.tracks, startIndex: 0, shuffle: false),
       icon: const Icon(Icons.play_arrow_rounded, size: 20),
-      label: const Text('Play All'),
+      label: const Text('Play All', maxLines: 1, overflow: TextOverflow.ellipsis),
       style: FilledButton.styleFrom(
         padding: EdgeInsets.symmetric(
             horizontal: fillWidth ? 12 : 20, vertical: 14),
@@ -119,7 +119,7 @@ class AlbumDetailPage extends StatelessWidget {
     final shuffle = OutlinedButton.icon(
       onPressed: () => player.playTracks(album.tracks, shuffle: true),
       icon: const Icon(Icons.shuffle_rounded, size: 18),
-      label: const Text('Shuffle'),
+      label: const Text('Shuffle', maxLines: 1, overflow: TextOverflow.ellipsis),
       style: OutlinedButton.styleFrom(
         padding: EdgeInsets.symmetric(
             horizontal: fillWidth ? 12 : 20, vertical: 14),
