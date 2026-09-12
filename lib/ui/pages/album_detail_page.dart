@@ -75,7 +75,7 @@ class AlbumDetailPage extends StatelessWidget {
             );
           },
         ),
-        const TrackListHeader(showAlbum: false, artistWidth: 220),
+        const TrackListHeader(showAlbum: false),
         Expanded(
           child: ListView.builder(
             padding: const EdgeInsets.only(bottom: 12),
@@ -88,7 +88,6 @@ class AlbumDetailPage extends StatelessWidget {
                 title: t.title,
                 artist: t.artist,
                 duration: t.duration,
-                artistWidth: 220,
                 isCurrent: current == t,
                 onPlay: () => player.playTracks(album.tracks, startIndex: i),
               );

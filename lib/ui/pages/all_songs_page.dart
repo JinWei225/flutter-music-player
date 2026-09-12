@@ -132,18 +132,32 @@ class _Header extends StatelessWidget {
           padding: const EdgeInsets.fromLTRB(16, 18, 16, 12),
           child: Row(
             children: [
-              // Flexible so the heading yields to the controls, not the
-              // other way round, when the body is only just wide enough.
-              Flexible(child: heading),
-              const SizedBox(width: 10),
-              Padding(
-                padding: const EdgeInsets.only(top: 5),
-                child: Text(
-                  '${tracks.length} songs',
-                  style: TextStyle(fontSize: 13, color: scheme.onSurfaceVariant),
+              // The one flex widget in the row, so it reliably claims exactly
+              // the space the trailing controls don't need -- pairing a
+              // Flexible heading directly with a Spacer split that space
+              // between them instead, based on how much room each was
+              // handed rather than how much the heading actually used, which
+              // left the controls stranded well short of the right edge
+              // whenever the heading text was short.
+              Expanded(
+                child: Row(
+                  children: [
+                    // Flexible so the heading yields to the controls, not
+                    // the other way round, when the body is only just wide
+                    // enough.
+                    Flexible(child: heading),
+                    const SizedBox(width: 10),
+                    Padding(
+                      padding: const EdgeInsets.only(top: 5),
+                      child: Text(
+                        '${tracks.length} songs',
+                        style:
+                            TextStyle(fontSize: 13, color: scheme.onSurfaceVariant),
+                      ),
+                    ),
+                  ],
                 ),
               ),
-              const Spacer(),
               if (tracks.isNotEmpty) ...[
                 _PlayAllButtons(tracks: tracks),
                 const SizedBox(width: 12),

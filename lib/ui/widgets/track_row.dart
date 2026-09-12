@@ -8,6 +8,23 @@ import '../theme.dart';
 const double kHideAlbumBelow = 640;
 const double kHideArtistBelow = 460;
 
+/// Relative widths of the text columns. They are flex factors, not pixels, so
+/// title/artist/album keep the same proportions to one another no matter how
+/// wide the window gets -- a fixed pixel width for artist/album left title to
+/// soak up every extra pixel on a maximized window, stretching it far past
+/// its text while the other columns stayed pinned together on the right.
+const int kTitleFlex = 5;
+const int kArtistFlex = 3;
+const int kAlbumFlex = 3;
+
+/// Horizontal gap between adjacent text columns.
+const double kColumnGap = 24;
+
+/// Padding shared by [TrackRow] and [TrackListHeader]. The trailing edge gets
+/// much more than the leading one -- at 16 either side the TIME column sat
+/// right on the window edge, which read as clipped rather than intentional.
+const EdgeInsets kRowPadding = EdgeInsets.fromLTRB(16, 0, 48, 0);
+
 /// One row in a track listing. [leading] is the row's index or track number.
 class TrackRow extends StatefulWidget {
   final String leading;
@@ -18,9 +35,6 @@ class TrackRow extends StatefulWidget {
   final bool isCurrent;
   final VoidCallback onPlay;
 
-  final double artistWidth;
-  final double albumWidth;
-
   const TrackRow({
     super.key,
     required this.leading,
@@ -30,8 +44,6 @@ class TrackRow extends StatefulWidget {
     required this.onPlay,
     this.artist,
     this.album,
-    this.artistWidth = 200,
-    this.albumWidth = 200,
   });
 
   @override
@@ -70,7 +82,7 @@ class _TrackRowState extends State<TrackRow> {
                   : _hovered
                       ? surfaces.hover
                       : null,
-              padding: const EdgeInsets.symmetric(horizontal: 16),
+              padding: kRowPadding,
               child: Row(
                 children: [
                   SizedBox(
@@ -116,6 +128,7 @@ class _TrackRowState extends State<TrackRow> {
                     ),
                   ),
                   Expanded(
+                    flex: kTitleFlex,
                     child: Column(
                       mainAxisAlignment: MainAxisAlignment.center,
                       crossAxisAlignment: CrossAxisAlignment.start,
@@ -147,9 +160,10 @@ class _TrackRowState extends State<TrackRow> {
                       ],
                     ),
                   ),
-                  if (showArtist)
-                    SizedBox(
-                      width: widget.artistWidth,
+                  if (showArtist) ...[
+                    const SizedBox(width: kColumnGap),
+                    Expanded(
+                      flex: kArtistFlex,
                       child: Text(
                         widget.artist!,
                         maxLines: 1,
@@ -158,9 +172,11 @@ class _TrackRowState extends State<TrackRow> {
                             fontSize: 12.5, color: scheme.onSurfaceVariant),
                       ),
                     ),
-                  if (showAlbum)
-                    SizedBox(
-                      width: widget.albumWidth,
+                  ],
+                  if (showAlbum) ...[
+                    const SizedBox(width: kColumnGap),
+                    Expanded(
+                      flex: kAlbumFlex,
                       child: Text(
                         widget.album!,
                         maxLines: 1,
@@ -169,11 +185,12 @@ class _TrackRowState extends State<TrackRow> {
                             fontSize: 12.5, color: scheme.onSurfaceVariant),
                       ),
                     ),
+                  ],
+                  const SizedBox(width: kColumnGap),
                   SizedBox(
                     width: 52,
                     child: Text(
                       formatDuration(widget.duration),
-                      textAlign: TextAlign.right,
                       style: TextStyle(
                         fontSize: 12,
                         fontFeatures: const [FontFeature.tabularFigures()],
@@ -196,15 +213,11 @@ class _TrackRowState extends State<TrackRow> {
 class TrackListHeader extends StatelessWidget {
   final bool showArtist;
   final bool showAlbum;
-  final double artistWidth;
-  final double albumWidth;
 
   const TrackListHeader({
     super.key,
     this.showArtist = true,
     this.showAlbum = true,
-    this.artistWidth = 200,
-    this.albumWidth = 200,
   });
 
   @override
@@ -223,7 +236,7 @@ class TrackListHeader extends StatelessWidget {
         final artist = showArtist && constraints.maxWidth >= kHideArtistBelow;
 
         return Container(
-          padding: const EdgeInsets.symmetric(horizontal: 16),
+          padding: kRowPadding,
           height: 30,
           decoration: BoxDecoration(
             border: Border(bottom: BorderSide(color: scheme.outline)),
@@ -231,14 +244,19 @@ class TrackListHeader extends StatelessWidget {
           child: Row(
             children: [
               SizedBox(width: 34, child: Text('#', style: style)),
-              Expanded(child: Text('TITLE', style: style)),
-              if (artist)
-                SizedBox(width: artistWidth, child: Text('ARTIST', style: style)),
-              if (album)
-                SizedBox(width: albumWidth, child: Text('ALBUM', style: style)),
+              Expanded(flex: kTitleFlex, child: Text('TITLE', style: style)),
+              if (artist) ...[
+                const SizedBox(width: kColumnGap),
+                Expanded(flex: kArtistFlex, child: Text('ARTIST', style: style)),
+              ],
+              if (album) ...[
+                const SizedBox(width: kColumnGap),
+                Expanded(flex: kAlbumFlex, child: Text('ALBUM', style: style)),
+              ],
+              const SizedBox(width: kColumnGap),
               SizedBox(
                 width: 52,
-                child: Text('TIME', style: style, textAlign: TextAlign.right),
+                child: Text('TIME', style: style),
               ),
             ],
           ),
