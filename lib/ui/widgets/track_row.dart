@@ -64,9 +64,13 @@ class _TrackRowState extends State<TrackRow> {
             widget.album != null && constraints.maxWidth >= kHideAlbumBelow;
         final showArtist =
             widget.artist != null && constraints.maxWidth >= kHideArtistBelow;
-        // When the artist column is gone it moves under the title instead of
-        // disappearing altogether.
-        final artistAsSubtitle = widget.artist != null && !showArtist;
+        // Columns that do not fit move under the title instead of
+        // disappearing altogether: "artist · album" on a phone.
+        final subtitle = [
+          if (widget.artist != null && !showArtist) widget.artist!,
+          if (widget.album != null && !showAlbum) widget.album!,
+        ].join('  ·  ');
+        final hasSubtitle = subtitle.isNotEmpty;
 
         return MouseRegion(
           onEnter: (_) => setState(() => _hovered = true),
@@ -75,8 +79,12 @@ class _TrackRowState extends State<TrackRow> {
             // There is no selection concept in the list, so a single tap plays
             // rather than doing nothing.
             onTap: widget.onPlay,
+            // Opaque so the gaps between columns and the padding count as the
+            // row. The container below only paints (and so only hit-tests)
+            // when hovered or current, which a finger never is.
+            behavior: HitTestBehavior.opaque,
             child: Container(
-              height: artistAsSubtitle ? 58 : 44,
+              height: hasSubtitle ? 58 : 44,
               color: widget.isCurrent
                   ? scheme.primary.withValues(alpha: 0.10)
                   : _hovered
@@ -145,10 +153,10 @@ class _TrackRowState extends State<TrackRow> {
                                 : scheme.onSurface,
                           ),
                         ),
-                        if (artistAsSubtitle) ...[
+                        if (hasSubtitle) ...[
                           const SizedBox(height: 3),
                           Text(
-                            widget.artist!,
+                            subtitle,
                             maxLines: 1,
                             overflow: TextOverflow.ellipsis,
                             style: TextStyle(

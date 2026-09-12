@@ -439,8 +439,23 @@ void main() {
       expect(find.text('TITLE'), findsOneWidget);
       expect(find.text('ALBUM'), findsNothing);
       expect(find.text('ARTIST'), findsNothing);
-      // Artist moves under the title instead of vanishing.
-      expect(find.text('NAYEON'), findsWidgets);
+      // Artist and album move under the title instead of vanishing.
+      expect(find.text('NAYEON  ·  NA'), findsWidgets);
+      expect(find.text('YEJI  ·  AIR - EP'), findsWidgets);
+    });
+
+    testWidgets('a tap anywhere on a row plays it, not just on its text', (
+      tester,
+    ) async {
+      await pumpApp(tester, size: phone);
+
+      // A finger never hovers, so the row used to accept taps only on the
+      // text itself; the blank space right of the time did nothing.
+      final row = tester.getRect(find.text('ABCD').first);
+      await tester.tapAt(Offset(phone.width - 8, row.center.dy));
+      await tester.pumpAndSettle();
+
+      expect(player.currentTrack?.title, 'ABCD');
     });
 
     testWidgets('tapping a song then the mini player opens the full player', (

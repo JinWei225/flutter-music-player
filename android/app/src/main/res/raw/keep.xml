@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  audio_service looks the playback notification icon up by name at runtime,
+  so nothing in the compiled code references it and the release build's
+  resource shrinker would drop it. Without it Android rejects the
+  notification ("no valid small icon") and kills the app the moment a track
+  starts.
+-->
+<resources xmlns:tools="http://schemas.android.com/tools"
+    tools:keep="@drawable/ic_notification" />
