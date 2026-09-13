@@ -5,8 +5,9 @@
 	<key>com.apple.security.app-sandbox</key>
 	<true/>
 	<!-- The library lives in ~/Music; a sandboxed app cannot read it without
-	     this, and the song list would simply come up empty. -->
-	<key>com.apple.security.assets.music.read-only</key>
+	     this, and the song list would simply come up empty. Read-write so the
+	     Edit Info sheet can save corrected tags back into the files. -->
+	<key>com.apple.security.assets.music.read-write</key>
 	<true/>
 </dict>
 </plist>

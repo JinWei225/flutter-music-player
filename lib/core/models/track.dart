@@ -34,6 +34,31 @@ class Track {
     this.duration,
   });
 
+  /// The same file with edited tags, as the Edit Info sheet leaves it.
+  Track copyWith({
+    String? title,
+    String? artist,
+    String? album,
+    String? albumArtist,
+    int? Function()? trackNumber,
+    int? Function()? discNumber,
+    String? Function()? year,
+    String? Function()? genre,
+  }) =>
+      Track(
+        path: path,
+        filePath: filePath,
+        title: title ?? this.title,
+        artist: artist ?? this.artist,
+        album: album ?? this.album,
+        albumArtist: albumArtist ?? this.albumArtist,
+        trackNumber: trackNumber == null ? this.trackNumber : trackNumber(),
+        discNumber: discNumber == null ? this.discNumber : discNumber(),
+        year: year == null ? this.year : year(),
+        genre: genre == null ? this.genre : genre(),
+        duration: duration,
+      );
+
   /// Files usually only carry a per-track artist; falling back to it keeps a
   /// normal single-artist album together, while a real album-artist tag lets a
   /// compilation with differing track artists still collapse into one album.

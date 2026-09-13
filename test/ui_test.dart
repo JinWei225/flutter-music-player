@@ -1,14 +1,21 @@
+import 'dart:io';
+
 import 'package:custom_music_player/core/library/library_model.dart';
+import 'package:custom_music_player/core/metadata/tag_edit.dart';
+import 'package:custom_music_player/core/metadata/tag_writer.dart';
+import 'package:custom_music_player/core/models/album.dart';
 import 'package:custom_music_player/core/player/player_model.dart';
 import 'package:custom_music_player/platform/library_source.dart';
 import 'package:custom_music_player/platform/settings_store.dart';
 import 'package:custom_music_player/ui/pages/all_songs_page.dart';
 import 'package:custom_music_player/ui/shell.dart';
 import 'package:custom_music_player/ui/theme.dart';
+import 'package:custom_music_player/ui/widgets/edit_track_info_dialog.dart';
 import 'package:custom_music_player/ui/widgets/mini_player.dart';
 import 'package:custom_music_player/ui/widgets/now_playing_panel.dart';
 import 'package:custom_music_player/ui/widgets/now_playing_sheet.dart';
 import 'package:custom_music_player/ui/widgets/player_bar.dart';
+import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
 import 'package:flutter/services.dart';
@@ -27,6 +34,10 @@ void main() {
   late PlayerModel player;
   late LibraryModel library;
   late SettingsStore settings;
+
+  /// What the Edit Info sheet asked to write, instead of touching the
+  /// real files in the music folder.
+  final written = <(File, TagEdit)>[];
 
   Widget buildApp() {
     return MultiProvider(
@@ -65,7 +76,11 @@ void main() {
       settings = await SettingsStore.open();
       audio = FakeAudioBackend();
       player = PlayerModel(settings, audio: audio);
-      library = LibraryModel(DirectoryLibrarySource.defaultLocation());
+      written.clear();
+      library = LibraryModel(
+        DirectoryLibrarySource.defaultLocation(),
+        writeTags: (file, edit) async => written.add((file, edit)),
+      );
       await library.load();
     });
 
@@ -362,6 +377,112 @@ void main() {
 
     expect(find.text('33'), findsOneWidget);
     expect(settings.volume, closeTo(0.33, 1e-9));
+  });
+
+  group('Edit Info', () {
+    testWidgets('right-clicking a row opens the editor pre-filled', (
+      tester,
+    ) async {
+      await pumpApp(tester);
+
+      await tester.tap(find.text('CAKE').first, buttons: kSecondaryButton);
+      await tester.pumpAndSettle();
+      expect(find.text('Edit Info…'), findsOneWidget);
+
+      await tester.tap(find.text('Edit Info…'));
+      await tester.pumpAndSettle();
+
+      expect(find.byType(EditTrackInfoDialog), findsOneWidget);
+      expect(find.widgetWithText(TextField, 'CAKE'), findsOneWidget);
+      expect(find.widgetWithText(TextField, 'ITZY'), findsNWidgets(2));
+      expect(find.widgetWithText(TextField, 'KILL MY DOUBT - EP'), findsOneWidget);
+      expect(find.text('02 CAKE.m4a'), findsOneWidget);
+
+      await tester.tap(find.text('Cancel'));
+      await tester.pumpAndSettle();
+      expect(find.byType(EditTrackInfoDialog), findsNothing);
+      expect(written, isEmpty);
+    });
+
+    testWidgets('saving writes the file and updates the list and albums', (
+      tester,
+    ) async {
+      await pumpApp(tester);
+
+      await tester.longPress(find.text('CAKE').first);
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Edit Info…'));
+      await tester.pumpAndSettle();
+
+      await tester.enterText(find.widgetWithText(TextField, 'CAKE'), 'Cake');
+      await tester.enterText(
+          find.widgetWithText(TextField, 'KILL MY DOUBT - EP'), 'Kill My Doubt');
+      await tester.tap(find.text('Save'));
+      await tester.pumpAndSettle();
+
+      expect(find.byType(EditTrackInfoDialog), findsNothing);
+      expect(written.length, 1);
+      expect(written.single.$1.path, endsWith('02 CAKE.m4a'));
+      expect(written.single.$2.title, 'Cake');
+      expect(written.single.$2.album, 'Kill My Doubt');
+      expect(written.single.$2.artist, 'ITZY');
+      expect(written.single.$2.trackNumber, 2);
+
+      // The row reflects the edit without a rescan...
+      expect(find.text('Cake'), findsWidgets);
+      expect(find.text('Kill My Doubt'), findsWidgets);
+      expect(find.textContaining('Saved to'), findsOneWidget);
+      // ...and the albums regrouped around the new name.
+      final names = library.albums.map((a) => a.name).toList();
+      expect(names, contains('Kill My Doubt'));
+      expect(Album.group(library.sortedTracks).length, 4);
+    });
+
+    testWidgets('a write failure is shown in the sheet, not swallowed', (
+      tester,
+    ) async {
+      await pumpApp(tester);
+      library = LibraryModel(
+        library.source,
+        writeTags: (_, __) async =>
+            throw const TagWriteException('disk says no'),
+      );
+      await tester.runAsync(library.load);
+      await tester.pumpWidget(buildApp());
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.text('CAKE').first, buttons: kSecondaryButton);
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Edit Info…'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Save'));
+      await tester.pumpAndSettle();
+
+      expect(find.byType(EditTrackInfoDialog), findsOneWidget);
+      expect(find.text('disk says no'), findsOneWidget);
+      expect(find.text('CAKE'), findsWidgets);
+    });
+
+    testWidgets('the playing track is renamed in the player bar too', (
+      tester,
+    ) async {
+      await pumpApp(tester);
+
+      await tester.tap(find.text('CAKE').first);
+      await tester.pumpAndSettle();
+      expect(player.currentTrack?.title, 'CAKE');
+
+      await tester.tap(find.text('CAKE').first, buttons: kSecondaryButton);
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Edit Info…'));
+      await tester.pumpAndSettle();
+      await tester.enterText(find.widgetWithText(TextField, 'CAKE'), 'Cake');
+      await tester.tap(find.text('Save'));
+      await tester.pumpAndSettle();
+
+      expect(player.currentTrack?.title, 'Cake');
+      expect(find.text('CAKE'), findsNothing);
+    });
   });
 
   group('medium (portrait tablet) layout', () {

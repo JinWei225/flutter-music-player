@@ -189,7 +189,7 @@ class _AppShellState extends State<AppShell> {
 
   Widget _buildBody() {
     if (_section == _Section.allSongs) return const AllSongsPage();
-    final album = _openAlbum;
+    final album = _currentOpenAlbum();
     if (album != null) {
       return AlbumDetailPage(
         album: album,
@@ -197,6 +197,19 @@ class _AppShellState extends State<AppShell> {
       );
     }
     return AlbumsPage(onOpenAlbum: (a) => setState(() => _openAlbum = a));
+  }
+
+  /// The open album as the library now has it. Editing a track's tags
+  /// regroups the albums, so the object opened earlier can go stale -- or,
+  /// if the album was renamed out from under the page, vanish, in which case
+  /// the list is shown instead.
+  Album? _currentOpenAlbum() {
+    final opened = _openAlbum;
+    if (opened == null) return null;
+    for (final a in context.watch<LibraryModel>().albums) {
+      if (a.key == opened.key) return a;
+    }
+    return null;
   }
 }
 

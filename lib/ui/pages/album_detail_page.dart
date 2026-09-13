@@ -5,6 +5,7 @@ import '../../core/models/album.dart';
 import '../../core/player/player_model.dart';
 import '../theme.dart';
 import '../widgets/album_art.dart';
+import '../widgets/edit_track_info_dialog.dart';
 import '../widgets/track_row.dart';
 
 class AlbumDetailPage extends StatelessWidget {
@@ -90,6 +91,7 @@ class AlbumDetailPage extends StatelessWidget {
                 duration: t.duration,
                 isCurrent: current == t,
                 onPlay: () => player.playTracks(album.tracks, startIndex: i),
+                onEdit: editTrackAction(context, t),
               );
             },
           ),

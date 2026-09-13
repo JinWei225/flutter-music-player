@@ -1,8 +1,15 @@
+import 'dart:io';
+
 import 'package:flutter/foundation.dart';
 
 import '../../platform/library_source.dart';
+import '../metadata/tag_edit.dart';
+import '../metadata/tag_writer.dart';
 import '../models/album.dart';
 import '../models/track.dart';
+
+/// Writes [edit] into the file at [path]. Swapped out in tests.
+typedef TagFileWriter = Future<void> Function(File file, TagEdit edit);
 
 enum SortField { title, artist, album }
 
@@ -20,7 +27,12 @@ extension SortFieldLabel on SortField {
 class LibraryModel extends ChangeNotifier {
   final LibrarySource source;
 
-  LibraryModel(this.source);
+  /// How edits reach disk. The default rewrites the audio file itself, so a
+  /// correction made here shows up in every other player and on every device
+  /// the file is copied to.
+  final TagFileWriter writeTags;
+
+  LibraryModel(this.source, {this.writeTags = TagWriter.write});
 
   List<Track> _tracks = const [];
   List<Album> _albums = const [];
@@ -80,6 +92,33 @@ class LibraryModel extends ChangeNotifier {
     } else {
       setSort(field, SortDirection.ascending);
     }
+  }
+
+  /// Saves [edit] into [track]'s file and returns the track as it now reads.
+  ///
+  /// Throws [TagWriteException] when the file cannot be changed; the library
+  /// is left as it was in that case.
+  Future<Track> saveTags(Track track, TagEdit edit) async {
+    final path = track.filePath;
+    if (path == null || !TagWriter.canWrite(path)) {
+      throw const TagWriteException('This file cannot be edited');
+    }
+    await writeTags(File(path), edit);
+
+    final updated = track.copyWith(
+      title: edit.titleOrNull ?? 'Unknown Title',
+      artist: edit.artistOrNull ?? 'Unknown Artist',
+      album: edit.albumOrNull ?? 'Unknown Album',
+      albumArtist: edit.albumArtistOrNull ?? '',
+      trackNumber: () => edit.trackNumber,
+      discNumber: () => edit.discNumber,
+      year: () => edit.yearOrNull,
+      genre: () => edit.genreOrNull,
+    );
+    _tracks = [for (final t in _tracks) t == track ? updated : t];
+    _albums = Album.group(_tracks);
+    notifyListeners();
+    return updated;
   }
 
   Album? albumFor(Track track) {

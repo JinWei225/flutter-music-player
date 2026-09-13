@@ -69,6 +69,19 @@ class PlayerModel extends ChangeNotifier {
   /// The queue in playback order, for the queue panel.
   List<Track> get queueInPlayOrder => [for (final i in _order) _queue[i]];
 
+  /// Swaps in a re-tagged copy of a queued track so the bar, the panel and
+  /// the system's now-playing info show the new names without a reload.
+  void replaceTrack(Track updated) {
+    var changed = false;
+    for (var i = 0; i < _queue.length; i++) {
+      if (_queue[i] == updated) {
+        _queue[i] = updated;
+        changed = true;
+      }
+    }
+    if (changed) _safeNotify();
+  }
+
   /// Index of the now-playing track within [queueInPlayOrder].
   int get currentQueuePosition => _position;
 
