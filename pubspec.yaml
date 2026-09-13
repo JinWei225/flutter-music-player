@@ -42,6 +42,13 @@ dependencies:
   media_kit_libs_windows_audio: ^1.0.9
   audio_service: ^0.18.19
   path_provider: ^2.1.6
+  # Tag parsing, writing and repair, shared with the mewsic-tagfix tool.
+  # Bump the ref after tagging a release there; during development point
+  # it at a checkout with a dependency_overrides path entry instead.
+  mewsic_tagfix:
+    git:
+      url: https://github.com/JinWei225/mewsic-tagfix.git
+      ref: v1.0.0
 dev_dependencies:
   flutter_test:
     sdk: flutter

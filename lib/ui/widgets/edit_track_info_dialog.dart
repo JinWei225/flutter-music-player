@@ -1,10 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:mewsic_tagfix/mewsic_tagfix.dart';
 import 'package:provider/provider.dart';
 
 import '../../core/library/library_model.dart';
-import '../../core/metadata/tag_edit.dart';
-import '../../core/metadata/tag_writer.dart';
 import '../../core/models/track.dart';
 import '../../core/player/player_model.dart';
 

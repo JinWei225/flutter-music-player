@@ -360,6 +360,15 @@ packages:
       url: "https://pub.dev"
     source: hosted
     version: "1.18.3"
+  mewsic_tagfix:
+    dependency: "direct main"
+    description:
+      path: "."
+      ref: "v1.0.0"
+      resolved-ref: "423d5ebb8fa948d561fa24b777321b8bc8a8aeb0"
+      url: "https://github.com/JinWei225/mewsic-tagfix.git"
+    source: git
+    version: "1.0.0"
   nested:
     dependency: transitive
     description:

@@ -2,9 +2,9 @@ import 'dart:io';
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart' show rootBundle;
+import 'package:mewsic_tagfix/mewsic_tagfix.dart';
 import 'package:path_provider/path_provider.dart';
 
-import '../core/metadata/tag_reader.dart';
 import '../core/models/track.dart';
 
 /// Resolves a track to an image the media session can display.

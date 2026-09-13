@@ -1,7 +1,8 @@
 import 'dart:io';
 import 'dart:typed_data';
 
-import '../core/metadata/tag_reader.dart';
+import 'package:mewsic_tagfix/mewsic_tagfix.dart';
+
 import '../core/models/track.dart';
 
 /// Embedded cover art for the UI, read once per album and kept in memory.

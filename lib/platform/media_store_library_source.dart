@@ -2,11 +2,8 @@ import 'dart:io';
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
+import 'package:mewsic_tagfix/mewsic_tagfix.dart';
 
-import '../core/metadata/mp4_tags.dart';
-import '../core/metadata/raw_tags.dart';
-import '../core/metadata/sibling_tags.dart';
-import '../core/metadata/tag_reader.dart';
 import '../core/models/track.dart';
 import 'library_source.dart';
 

@@ -148,8 +148,8 @@ local signing certificate once (it asks for your login password to trust it):
 ./packaging/signing_identity_macos.sh
 ```
 
-From then on both `install_app_macos.sh` and `install_tagfix_macos.sh` sign
-with it automatically. The certificate is for this Mac only and has nothing to
+From then on `install_app_macos.sh` (and mewsic-tagfix's own install script)
+sign with it automatically. The certificate is for this Mac only and has nothing to
 do with Apple's developer program.
 
 The macOS runner is sandboxed, and the entitlements grant read and write
@@ -216,8 +216,9 @@ flutter analyze
 flutter test
 ```
 
-The suite covers tag parsing, album grouping, sorting, the queue with shuffle
-and repeat, volume persistence, and both the desktop and phone layouts.
+The suite covers album grouping, sorting, the queue with shuffle and repeat,
+volume persistence, the Edit Info sheet, and both the desktop and phone
+layouts; tag parsing and writing are tested in the mewsic-tagfix package.
 
 Most tests build their own fixtures, but `test/metadata_test.dart` and
 `test/ui_test.dart` read the real music folders and assert against the
@@ -241,7 +242,7 @@ python3 packaging/make_icons.py --album-placeholder assets/album_placeholder.png
 ```
 lib/
   core/          pure Dart, no platform code
-    metadata/    MP4 and ID3 tag parsers
+    metadata/    RawTags -> Track; the parsers themselves come from mewsic_tagfix
     models/      Track, Album
     library/     scanning and sort state
     player/      queue, shuffle, repeat, volume
@@ -257,8 +258,12 @@ and repeat rules are tested without an audio device.
 
 ### Why the tag parsing is hand-written
 
-Store-bought AAC files defeat the usual readers, so metadata is parsed in-app
-rather than trusted from the operating system:
+Store-bought AAC files defeat the usual readers, so metadata is parsed by the
+app rather than trusted from the operating system. The parsers, the tag
+writer behind *Edit Info*, and the album-mate / store completion live in
+their own package, [mewsic-tagfix](https://github.com/JinWei225/mewsic-tagfix),
+pulled in as a git dependency (`mewsic_tagfix` in `pubspec.yaml`). What they
+handle:
 
 - iTunes writes an **empty** `udta/meta/ilst` inside every `trak`, alongside
   the real one at `moov` level. A parser that takes the first `ilst` it finds
@@ -287,27 +292,21 @@ like a scanner fallback is re-read with these parsers.
 ### Fixing the files themselves: `mewsic-tagfix`
 
 All of that recovery only helps inside Mewsic. To make such files right for
-every player, the same logic can be run the other way -- written *into* the
-files -- by a small standalone tool that needs neither the app nor Flutter:
+every player and device, the same logic can be run the other way -- written
+*into* the files -- by the standalone command-line tool in that same repo:
+[**mewsic-tagfix**](https://github.com/JinWei225/mewsic-tagfix). It also asks
+the iTunes Store for the exact titles and the album cover, and can watch the
+Apple Music folder to complete new purchases as they land. Usage and
+installation are documented there.
 
-```bash
-dart run bin/tagfix.dart check          # what is missing, and how it would be filled
-dart run bin/tagfix.dart fix            # write the missing names (--dry-run to preview)
-dart run bin/tagfix.dart watch          # keep running; fix new purchases as they land
+To work on the shared code and see it in the app before tagging a release,
+point the dependency at a local checkout:
+
+```yaml
+dependency_overrides:
+  mewsic_tagfix:
+    path: ../mewsic-tagfix
 ```
-
-Files are only ever completed, never changed: a field that is present stays
-as it is, and everything else in the file (store IDs, dates, lyrics) is left
-untouched. The store itself is consulted first, through the public iTunes
-lookup API and the `plID`/`cnID`/`sfID` atoms every purchase carries: it is
-the only source that knows a title's real punctuation (iTunes writes
-`Can’t` as `Can_t` on disk), a track's own artist credit, and the album cover,
-which purchases do not embed and which is added at 1200×1200 to any file
-lacking one. `--offline` skips the store and uses only what is on disk. On
-macOS, `packaging/install_tagfix_macos.sh` builds it as a standalone binary
-and registers a launch agent so `watch` runs at login against the Apple Music
-folder; `--uninstall` removes it again. The first run needs *Media & Apple
-Music* access under Privacy & Security.
 
 ## Known limitations
 

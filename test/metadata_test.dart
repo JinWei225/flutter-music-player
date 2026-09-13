@@ -1,11 +1,12 @@
 import 'dart:io';
 
 import 'package:custom_music_player/core/library/library_model.dart';
-import 'package:custom_music_player/core/metadata/tag_reader.dart';
+import 'package:custom_music_player/core/metadata/track_reader.dart';
 import 'package:custom_music_player/core/models/album.dart';
 import 'package:custom_music_player/core/models/track.dart';
 import 'package:custom_music_player/platform/library_source.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:mewsic_tagfix/mewsic_tagfix.dart';
 
 /// These run against the real iTunes files in the platform's own music
 /// folders. They are the check that tag reading works on actual store-bought
@@ -157,7 +158,7 @@ void main() {
       await tmp.writeAsBytes(List.filled(64, 0));
       addTearDown(() => tmp.delete());
 
-      final track = await TagReader.read(tmp);
+      final track = await TrackReader.read(tmp);
       expect(track.title, 'Untagged');
       expect(track.artist, 'Unknown Artist');
       expect(track.album, 'Unknown Album');
@@ -172,7 +173,7 @@ void main() {
           .create(recursive: true);
       await file.writeAsBytes(List.filled(64, 0));
 
-      final track = await TagReader.read(file, libraryRoot: root);
+      final track = await TrackReader.read(file, libraryRoot: root);
       expect(track.title, 'CAKE');
       expect(track.artist, 'ITZY');
       expect(track.album, 'KILL MY DOUBT - EP');
@@ -181,7 +182,7 @@ void main() {
       // A file sitting loose in the root gets nothing from its path.
       final loose = await File('${root.path}${sep}03 Loose.m4a').create();
       await loose.writeAsBytes(List.filled(64, 0));
-      final looseTrack = await TagReader.read(loose, libraryRoot: root);
+      final looseTrack = await TrackReader.read(loose, libraryRoot: root);
       expect(looseTrack.artist, 'Unknown Artist');
       expect(looseTrack.album, 'Unknown Album');
       expect(TagReader.folderTagsFromPath('/elsewhere/a/b/c.m4a', root), isNull);

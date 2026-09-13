@@ -1,7 +1,8 @@
 import 'dart:io';
 
-import '../core/metadata/sibling_tags.dart';
-import '../core/metadata/tag_reader.dart';
+import 'package:mewsic_tagfix/mewsic_tagfix.dart';
+
+import '../core/metadata/track_reader.dart';
 import '../core/models/track.dart';
 
 /// Thrown when the system refuses access to the library, so the UI can say so
@@ -116,7 +117,7 @@ class DirectoryLibrarySource implements LibrarySource {
 
     return [
       for (var i = 0; i < entries.length; i++)
-        TagReader.toTrack(entries[i].file.path, tags[i],
+        TrackReader.toTrack(entries[i].file.path, tags[i],
             libraryRoot: entries[i].root),
     ];
   }

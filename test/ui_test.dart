@@ -1,8 +1,6 @@
 import 'dart:io';
 
 import 'package:custom_music_player/core/library/library_model.dart';
-import 'package:custom_music_player/core/metadata/tag_edit.dart';
-import 'package:custom_music_player/core/metadata/tag_writer.dart';
 import 'package:custom_music_player/core/models/album.dart';
 import 'package:custom_music_player/core/player/player_model.dart';
 import 'package:custom_music_player/platform/library_source.dart';
@@ -20,6 +18,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:mewsic_tagfix/mewsic_tagfix.dart';
 import 'package:provider/provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 

@@ -1,11 +1,10 @@
 import 'dart:io';
 
 import 'package:flutter/foundation.dart';
+import 'package:mewsic_tagfix/mewsic_tagfix.dart';
 
 import '../../platform/artwork_store.dart';
 import '../../platform/library_source.dart';
-import '../metadata/tag_edit.dart';
-import '../metadata/tag_writer.dart';
 import '../models/album.dart';
 import '../models/track.dart';
 
