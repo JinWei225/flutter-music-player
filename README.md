@@ -133,6 +133,25 @@ Drag **Mewsic.app** into `/Applications`. On first launch, right-click the app
 and choose *Open* — it is unsigned, so Gatekeeper refuses a plain double-click
 once.
 
+Or let a script do the build, signing and install in one go:
+
+```bash
+./packaging/install_app_macos.sh
+```
+
+macOS ties an app's privacy grants to its code signature, and an ad-hoc
+signature changes with every build — so each reinstall would ask for
+*Media & Apple Music* access again. To keep the grant across builds, create a
+local signing certificate once (it asks for your login password to trust it):
+
+```bash
+./packaging/signing_identity_macos.sh
+```
+
+From then on both `install_app_macos.sh` and `install_tagfix_macos.sh` sign
+with it automatically. The certificate is for this Mac only and has nothing to
+do with Apple's developer program.
+
 The macOS runner is sandboxed, and the entitlements grant read and write
 access to `~/Music` (write is what lets *Edit Info* save tags). Without that
 entitlement the song list comes up empty.

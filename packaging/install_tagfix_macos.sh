@@ -17,6 +17,9 @@ BIN="$BIN_DIR/mewsic-tagfix"
 PLIST="$HOME/Library/LaunchAgents/$LABEL.plist"
 LOG="$HOME/Library/Logs/mewsic-tagfix.log"
 
+# shellcheck source=codesign_macos.sh
+source "$PROJECT/packaging/codesign_macos.sh"
+
 uninstall() {
   echo "Stopping and removing mewsic-tagfix..."
   launchctl bootout "gui/$(id -u)/$LABEL" 2>/dev/null || true
@@ -46,11 +49,14 @@ mkdir -p "$BIN_DIR" "$HOME/Library/LaunchAgents" "$HOME/Library/Logs"
 BUILD_OUT="$PROJECT/build/tagfix"
 (cd "$PROJECT" && dart pub get >/dev/null \
   && dart build cli -t bin/tagfix.dart -o "$BUILD_OUT" >/dev/null)
-install -m 755 "$BUILD_OUT/bundle/bin/tagfix" "$BIN"
+# Signed with a stable local identity when one exists, so macOS keeps the
+# Media & Apple Music grant across rebuilds instead of asking every time.
+sign_binary "$BUILD_OUT/bundle/bin/tagfix" "$LABEL"
 
 # --- launch agent --------------------------------------------------------
-# Stop any running copy before the plist is rewritten.
+# Stop any running copy before its binary and plist are replaced.
 launchctl bootout "gui/$(id -u)/$LABEL" 2>/dev/null || true
+install -m 755 "$BUILD_OUT/bundle/bin/tagfix" "$BIN"
 
 cat > "$PLIST" <<EOF
 <?xml version="1.0" encoding="UTF-8"?>
