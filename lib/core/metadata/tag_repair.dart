@@ -1,7 +1,9 @@
 import 'dart:io';
+import 'dart:typed_data';
 
 import 'raw_tags.dart';
 import 'sibling_tags.dart';
+import 'store_catalogue.dart';
 import 'tag_edit.dart';
 import 'tag_reader.dart';
 import 'tag_writer.dart';
@@ -27,14 +29,24 @@ class TagRepair {
 /// This is the app's own recovery -- sort atoms, album-mates sharing store
 /// IDs, the `Artist/Album/` folder layout, the filename -- turned around and
 /// written *into* the files, so any player on any device reads them right.
-/// A file is only ever completed, never changed: a field that is present
-/// stays exactly as it is, and a file with nothing missing is left alone.
+/// With a [StoreCatalogue] the store itself is asked first, which is the only
+/// source that knows a title's real punctuation, a track's own artist credit,
+/// and the album's cover. A file is only ever completed, never changed: a
+/// field that is present stays exactly as it is.
 ///
 /// Repairs are planned per album folder because that is where a nameless
 /// track's album-mates live.
 class TagRepairer {
+  final StoreCatalogue? catalogue;
+
+  /// Called when the catalogue cannot be reached; the repair continues with
+  /// local sources only.
+  final void Function(String message)? onWarning;
+
+  const TagRepairer({this.catalogue, this.onWarning});
+
   /// Plans repairs for every audio file under [root].
-  static Future<List<TagRepair>> planTree(Directory root) async {
+  Future<List<TagRepair>> planTree(Directory root) async {
     final byFolder = <String, List<File>>{};
     await for (final e in root.list(recursive: true, followLinks: false)) {
       if (e is! File || !TagReader.isSupported(e.path) || _isTemporary(e.path)) {
@@ -51,8 +63,7 @@ class TagRepairer {
   }
 
   /// Plans repairs for one album folder.
-  static Future<List<TagRepair>> planFolder(Directory folder,
-      {required Directory root}) async {
+  Future<List<TagRepair>> planFolder(Directory folder, {required Directory root}) async {
     final files = <File>[];
     await for (final e in folder.list(followLinks: false)) {
       if (e is File && TagReader.isSupported(e.path) && !_isTemporary(e.path)) {
@@ -64,8 +75,7 @@ class TagRepairer {
 
   /// Plans repairs for [files], which should be album-mates so they can
   /// complete one another.
-  static Future<List<TagRepair>> planFiles(List<File> files,
-      {required Directory root}) async {
+  Future<List<TagRepair>> planFiles(List<File> files, {required Directory root}) async {
     final parsed = <RawTags>[];
     for (final f in files) {
       parsed.add(await TagReader.parse(f));
@@ -75,63 +85,149 @@ class TagRepairer {
     final own = [for (final t in parsed) _Names(t)];
     SiblingTags.complete(parsed);
 
+    // Album-mates share an album, so the store is asked once per folder.
+    final albums = <int, StoreAlbum?>{};
+    final art = <int, Uint8List?>{};
+
     final repairs = <TagRepair>[];
     for (var i = 0; i < files.length; i++) {
-      final repair = _plan(files[i].path, parsed[i], own[i], root);
+      final t = parsed[i];
+      final albumId = t.storeAlbumId;
+      StoreAlbum? album;
+      if (albumId != null && catalogue != null) {
+        album = albums.containsKey(albumId)
+            ? albums[albumId]
+            : albums[albumId] = await _lookup(albumId, t.storefrontId);
+      }
+      final track = album == null || t.storeTrackId == null
+          ? null
+          : album.tracks[t.storeTrackId!];
+      Uint8List? cover;
+      if (album != null && !t.hasArtwork) {
+        cover = art.containsKey(album.id)
+            ? art[album.id]
+            : art[album.id] = await _artwork(album);
+      }
+      final repair = _plan(files[i].path, t, own[i], root, album, track, cover);
       if (repair != null) repairs.add(repair);
     }
     return repairs;
   }
 
-  static TagRepair? _plan(String path, RawTags t, _Names own, Directory root) {
-    final incomplete = own.title == null || own.artist == null || own.album == null;
-    if (!incomplete && !t.namesFromSortAtoms) return null;
+  Future<StoreAlbum?> _lookup(int albumId, int? storefrontId) async {
+    try {
+      return await catalogue!.album(albumId, storefrontId: storefrontId);
+    } on CatalogueException catch (e) {
+      onWarning?.call('$e');
+      return null;
+    }
+  }
 
+  Future<Uint8List?> _artwork(StoreAlbum album) async {
+    try {
+      return await catalogue!.artwork(album);
+    } on CatalogueException catch (e) {
+      onWarning?.call('$e');
+      return null;
+    }
+  }
+
+  static TagRepair? _plan(
+    String path,
+    RawTags t,
+    _Names own,
+    Directory root,
+    StoreAlbum? album,
+    StoreTrack? track,
+    Uint8List? art,
+  ) {
     final filled = <String>[];
     final folder = TagReader.folderTagsFromPath(path, root);
 
     String? title = t.title;
     String? artist = t.artist;
-    String? album = t.album;
+    String? albumName = t.album;
     String? albumArtist = t.albumArtist;
     String? genre = t.genre;
     int? trackNumber = t.trackNumber;
+    int? discNumber = t.discNumber;
+    String? date = t.rawDate;
 
     void note(String field, String? value, String source) {
       if (value != null) filled.add('$field ← $source');
     }
 
     if (t.namesFromSortAtoms) filled.add('names ← sort atoms');
-    if (own.title == null && title == null) {
-      title = TagReader.titleFromFileName(path);
-      note('title', title, 'filename');
+
+    // Order of trust: the file's own atoms, the store, album-mates, the
+    // folder layout, and lastly the filename.
+    if (own.title == null) {
+      title = track?.title;
+      note('title', title, 'store');
+      if (title == null) {
+        title = TagReader.titleFromFileName(path);
+        note('title', title, 'filename');
+      }
     }
     if (own.artist == null) {
-      if (artist != null) {
+      artist = track?.artist;
+      note('artist', artist, 'store');
+      if (artist == null) {
+        artist = t.artist;
         note('artist', artist, 'album-mates');
-      } else {
+      }
+      if (artist == null) {
         artist = folder?.artist;
         note('artist', artist, 'folder');
       }
     }
     if (own.album == null) {
-      if (album != null) {
-        note('album', album, 'album-mates');
-      } else {
-        album = folder?.album;
-        note('album', album, 'folder');
+      albumName = album?.name;
+      note('album', albumName, 'store');
+      if (albumName == null) {
+        albumName = t.album;
+        note('album', albumName, 'album-mates');
+      }
+      if (albumName == null) {
+        albumName = folder?.album;
+        note('album', albumName, 'folder');
       }
     }
-    if (own.albumArtist == null && albumArtist != null) {
-      note('album artist', albumArtist, 'album-mates');
+    if (own.albumArtist == null) {
+      albumArtist = album?.artist;
+      note('album artist', albumArtist, 'store');
+      if (albumArtist == null) {
+        albumArtist = t.albumArtist;
+        note('album artist', albumArtist, 'album-mates');
+      }
     }
-    if (own.genre == null && genre != null) note('genre', genre, 'album-mates');
+    if (own.genre == null) {
+      genre = track?.genre ?? album?.genre;
+      note('genre', genre, 'store');
+      if (genre == null) {
+        genre = t.genre;
+        note('genre', genre, 'album-mates');
+      }
+    }
     if (trackNumber == null) {
-      trackNumber = TagReader.trackNumberFromFileName(path);
-      if (trackNumber != null) filled.add('track ← filename');
+      trackNumber = track?.trackNumber;
+      if (trackNumber != null) filled.add('track ← store');
+      if (trackNumber == null) {
+        trackNumber = TagReader.trackNumberFromFileName(path);
+        if (trackNumber != null) filled.add('track ← filename');
+      }
     }
+    if (discNumber == null && track?.discNumber != null) {
+      discNumber = track!.discNumber;
+      filled.add('disc ← store');
+    }
+    if (date == null) {
+      date = track?.releaseDate ?? album?.releaseDate;
+      note('date', date, 'store');
+    }
+    if (art != null) filled.add('artwork ← store');
 
-    // Nothing recoverable (a loose, untagged file): leave it be.
+    // Nothing missing, or nothing recoverable: leave the file be.
     if (filled.isEmpty) return null;
 
     return TagRepair(
@@ -140,13 +236,14 @@ class TagRepairer {
       edit: TagEdit(
         title: title ?? '',
         artist: artist ?? '',
-        album: album ?? '',
+        album: albumName ?? '',
         albumArtist: albumArtist ?? '',
         genre: genre ?? '',
         // The full date as the file had it, so a repair never shortens it.
-        year: t.rawDate ?? t.year ?? '',
+        year: date ?? t.year ?? '',
         trackNumber: trackNumber,
-        discNumber: t.discNumber,
+        discNumber: discNumber,
+        artwork: art,
       ),
     );
   }

@@ -278,11 +278,17 @@ dart run bin/tagfix.dart watch          # keep running; fix new purchases as the
 ```
 
 Files are only ever completed, never changed: a field that is present stays
-as it is, and everything else in the file (artwork, store IDs, dates) is left
-untouched. On macOS, `packaging/install_tagfix_macos.sh` builds it as a
-standalone binary and registers a launch agent so `watch` runs at login
-against the Apple Music folder; `--uninstall` removes it again. The first run
-needs *Media & Apple Music* access under Privacy & Security.
+as it is, and everything else in the file (store IDs, dates, lyrics) is left
+untouched. The store itself is consulted first, through the public iTunes
+lookup API and the `plID`/`cnID`/`sfID` atoms every purchase carries: it is
+the only source that knows a title's real punctuation (iTunes writes
+`Can’t` as `Can_t` on disk), a track's own artist credit, and the album cover,
+which purchases do not embed and which is added at 1200×1200 to any file
+lacking one. `--offline` skips the store and uses only what is on disk. On
+macOS, `packaging/install_tagfix_macos.sh` builds it as a standalone binary
+and registers a launch agent so `watch` runs at login against the Apple Music
+folder; `--uninstall` removes it again. The first run needs *Media & Apple
+Music* access under Privacy & Security.
 
 ## Known limitations
 
@@ -292,5 +298,6 @@ needs *Media & Apple Music* access under Privacy & Security.
 - **No background playback on desktop** — closing the window stops audio. The
   media session is Android-only.
 - **Album art** is read from a file's embedded cover when present. Files
-  without one show a neutral tile; no artwork is fetched from the internet.
+  without one show a neutral tile; the app itself fetches nothing from the
+  internet (`mewsic-tagfix` can embed the store's cover into the files).
 - **No playlists or search.**

@@ -2,6 +2,7 @@ import 'dart:io';
 
 import 'package:flutter/foundation.dart';
 
+import '../../platform/artwork_store.dart';
 import '../../platform/library_source.dart';
 import '../metadata/tag_edit.dart';
 import '../metadata/tag_writer.dart';
@@ -62,6 +63,8 @@ class LibraryModel extends ChangeNotifier {
     try {
       _tracks = await source.loadTracks();
       _albums = Album.group(_tracks);
+      // Covers may have been added to the files since they were last read.
+      ArtworkStore.instance.clear();
     } catch (e) {
       _error = '$e';
       _tracks = const [];

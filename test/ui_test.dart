@@ -444,7 +444,7 @@ void main() {
       await pumpApp(tester);
       library = LibraryModel(
         library.source,
-        writeTags: (_, __) async =>
+        writeTags: (_, _) async =>
             throw const TagWriteException('disk says no'),
       );
       await tester.runAsync(library.load);

@@ -135,7 +135,8 @@ class Mp3TagWriter {
     String? trackTotal;
     String? discTotal;
     for (final f in existing.frames) {
-      if (!_managed.contains(f.id)) {
+      final replacingArt = f.id == 'APIC' && edit.artwork != null;
+      if (!_managed.contains(f.id) && !replacingArt) {
         body.add(_frame(major, f.id, f.flags, f.data));
         continue;
       }
@@ -159,6 +160,21 @@ class Mp3TagWriter {
     }
     if (edit.discNumber != null) {
       text('TPOS', _withTotal(edit.discNumber!, discTotal));
+    }
+    final art = edit.artwork;
+    if (art != null) {
+      final type = TagEdit.artworkType(art);
+      if (type == null) throw const TagWriteException('Artwork must be JPEG or PNG');
+      // APIC: encoding, MIME type, picture type (3 == front cover),
+      // description, image bytes.
+      body.add(_frame(major, 'APIC', const [0, 0], [
+        0,
+        ...latin1.encode(type == 13 ? 'image/jpeg' : 'image/png'),
+        0,
+        3,
+        0,
+        ...art,
+      ]));
     }
     body.add(Uint8List(_padding));
 

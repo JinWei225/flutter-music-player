@@ -110,6 +110,7 @@ class _AlbumTileState extends State<_AlbumTile> {
                   child: AlbumArt(
                     size: constraints.maxWidth,
                     radius: 8,
+                    track: widget.album.tracks.first,
                   ),
                 ),
               ),

@@ -54,7 +54,11 @@ class AlbumDetailPage extends StatelessWidget {
                   Row(
                     crossAxisAlignment: CrossAxisAlignment.end,
                     children: [
-                      AlbumArt(size: compact ? 96 : 160, radius: 10),
+                      AlbumArt(
+                        size: compact ? 96 : 160,
+                        radius: 10,
+                        track: album.tracks.first,
+                      ),
                       SizedBox(width: compact ? 14 : 22),
                       Expanded(
                         child: _Info(

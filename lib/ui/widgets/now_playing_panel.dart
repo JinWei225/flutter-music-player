@@ -140,7 +140,7 @@ class _Hero extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          AlbumArt(size: width - 32, radius: 10),
+          AlbumArt(size: width - 32, radius: 10, track: track),
           const SizedBox(height: 14),
           Text(
             track.title,

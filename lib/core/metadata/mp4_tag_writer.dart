@@ -182,7 +182,8 @@ class Mp4TagWriter {
     if (buf != null && ilst != null) {
       for (final item
           in _children(buf, ilst.offset + ilst.headerLen, ilst.offset + ilst.size)) {
-        if (!_managed.contains(item.type)) {
+        final replacingArt = item.type == 'covr' && edit.artwork != null;
+        if (!_managed.contains(item.type) && !replacingArt) {
           out.add(Uint8List.sublistView(buf, item.offset, item.offset + item.size));
           continue;
         }
@@ -209,6 +210,12 @@ class Mp4TagWriter {
     }
     if (edit.discNumber != null) {
       out.add(_item('disk', 0, _pair(edit.discNumber!, discTotal, 6)));
+    }
+    final art = edit.artwork;
+    if (art != null) {
+      final type = TagEdit.artworkType(art);
+      if (type == null) throw const TagWriteException('Artwork must be JPEG or PNG');
+      out.add(_item('covr', type, art));
     }
     return out.takeBytes();
   }

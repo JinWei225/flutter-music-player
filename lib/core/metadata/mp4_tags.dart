@@ -37,6 +37,7 @@ class Mp4TagParser {
   static const _storeTrackId = 'cnID';
   static const _storeArtistId = 'atID';
   static const _storeAlbumId = 'plID';
+  static const _storefrontId = 'sfID';
 
   /// Container boxes whose children we may need to descend into.
   static const _maxBoxes = 4096;
@@ -235,6 +236,12 @@ class Mp4TagParser {
             break;
           case _storeAlbumId:
             tags.storeAlbumId = _nonZero(_bigEndian(payload));
+            break;
+          case _storefrontId:
+            tags.storefrontId = _nonZero(_bigEndian(payload));
+            break;
+          case 'covr':
+            tags.hasArtwork = true;
             break;
           default:
             // Type 1 is UTF-8 text; everything else here (artwork, ints) is

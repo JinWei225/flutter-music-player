@@ -18,6 +18,13 @@ class RawTags {
   int? storeArtistId;
   int? storeAlbumId;
 
+  /// The store the file was bought from (`sfID`), which decides which
+  /// catalogue to ask when looking a track up.
+  int? storefrontId;
+
+  /// Whether the file carries embedded cover art.
+  bool hasArtwork = false;
+
   /// The release date exactly as the file spells it (`©day`, `TDRC`), so a
   /// rewrite can put it back verbatim; [year] is the four digits shown.
   String? rawDate;
@@ -64,6 +71,8 @@ class RawTags {
     storeTrackId ??= other.storeTrackId;
     storeArtistId ??= other.storeArtistId;
     storeAlbumId ??= other.storeAlbumId;
+    storefrontId ??= other.storefrontId;
     rawDate ??= other.rawDate;
+    hasArtwork = hasArtwork || other.hasArtwork;
   }
 }

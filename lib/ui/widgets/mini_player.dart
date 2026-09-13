@@ -27,7 +27,7 @@ class MiniPlayer extends StatelessWidget {
         padding: const EdgeInsets.symmetric(horizontal: 12),
         child: Row(
           children: [
-            const AlbumArt(size: 42),
+            AlbumArt(size: 42, track: track),
             const SizedBox(width: 12),
             Expanded(
               child: Column(

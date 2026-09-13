@@ -1,4 +1,5 @@
 import 'dart:io';
+import 'dart:typed_data';
 
 import '../models/track.dart';
 import 'mp3_tags.dart';
@@ -41,6 +42,24 @@ class TagReader {
       tags = null;
     }
     return tags ?? RawTags();
+  }
+
+  /// The embedded cover of [file], or null when it has none or the format
+  /// is not one we read.
+  static Future<Uint8List?> readArtwork(File file) async {
+    try {
+      switch (_extension(file.path)) {
+        case '.m4a':
+        case '.mp4':
+        case '.m4b':
+          return await Mp4TagParser.readArtwork(file);
+        case '.mp3':
+          return await Mp3TagParser.readArtwork(file);
+      }
+    } catch (_) {
+      // Malformed art is no reason to fail the row that shows it.
+    }
+    return null;
   }
 
   /// Turns parsed [tags] into a [Track], filling gaps in this order: the

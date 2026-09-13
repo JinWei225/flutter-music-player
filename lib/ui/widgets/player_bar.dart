@@ -59,7 +59,7 @@ class PlayerBar extends StatelessWidget {
                         child: Row(
                           mainAxisSize: MainAxisSize.min,
                           children: [
-                            const AlbumArt(size: 52),
+                            AlbumArt(size: 52, track: track),
                             const SizedBox(width: 12),
                             Flexible(
                               child: Column(

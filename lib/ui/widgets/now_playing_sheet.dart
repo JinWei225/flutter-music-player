@@ -86,7 +86,7 @@ class _Body extends StatelessWidget {
             padding: const EdgeInsets.fromLTRB(24, 8, 24, 0),
             child: Column(
               children: [
-                AlbumArt(size: artSize, radius: 14),
+                AlbumArt(size: artSize, radius: 14, track: track),
                 const SizedBox(height: 28),
                 Text(
                   track.title,

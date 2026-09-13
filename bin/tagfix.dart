@@ -13,6 +13,7 @@
 //
 //   --dry-run   with fix/watch: report only, change nothing
 //   --quiet     with watch: log only when something is written
+//   --offline   do not ask the iTunes Store; use only what is on disk
 //
 // [folder] defaults to the Apple Music library on macOS
 // (~/Music/Music/Media.localized/Music) and ~/Music elsewhere.
@@ -20,6 +21,7 @@
 import 'dart:async';
 import 'dart:io';
 
+import 'package:custom_music_player/core/metadata/store_catalogue.dart';
 import 'package:custom_music_player/core/metadata/tag_repair.dart';
 import 'package:custom_music_player/core/metadata/tag_writer.dart';
 
@@ -30,6 +32,11 @@ Future<void> main(List<String> args) async {
   final root = Directory(words.length > 1 ? words[1] : _defaultRoot());
   final dryRun = flags.contains('--dry-run');
   final quiet = flags.contains('--quiet');
+  final catalogue = flags.contains('--offline') ? null : ItunesCatalogue();
+  final repairer = TagRepairer(
+    catalogue: catalogue,
+    onWarning: (m) => stderr.writeln('${_stamp()} store unreachable, continuing offline: $m'),
+  );
 
   if (flags.contains('--help') || command == 'help') {
     _usage();
@@ -44,13 +51,13 @@ Future<void> main(List<String> args) async {
   try {
     switch (command) {
       case 'check':
-        exitCode = await _fixTree(root, dryRun: true) ? 0 : 1;
+        exitCode = await _fixTree(repairer, root, dryRun: true) ? 0 : 1;
         break;
       case 'fix':
-        await _fixTree(root, dryRun: dryRun);
+        await _fixTree(repairer, root, dryRun: dryRun);
         break;
       case 'watch':
-        await _watch(root, dryRun: dryRun, quiet: quiet);
+        await _watch(repairer, root, dryRun: dryRun, quiet: quiet);
         break;
       default:
         _usage();
@@ -59,12 +66,14 @@ Future<void> main(List<String> args) async {
   } on FileSystemException catch (e) {
     stderr.writeln(_explainAccess(e, root));
     exitCode = 3;
+  } finally {
+    catalogue?.close();
   }
 }
 
 /// Repairs everything under [root]. Returns true when nothing needed doing.
-Future<bool> _fixTree(Directory root, {required bool dryRun}) async {
-  final repairs = await TagRepairer.planTree(root);
+Future<bool> _fixTree(TagRepairer repairer, Directory root, {required bool dryRun}) async {
+  final repairs = await repairer.planTree(root);
   if (repairs.isEmpty) {
     print('All files under ${root.path} have their names.');
     return true;
@@ -82,7 +91,8 @@ Future<bool> _fixTree(Directory root, {required bool dryRun}) async {
 /// stop appearing in it -- the Music app writes a purchase progressively, and
 /// album-mates are needed to complete one another, so the folder is handled
 /// as a unit once it has gone quiet.
-Future<void> _watch(Directory root, {required bool dryRun, required bool quiet}) async {
+Future<void> _watch(TagRepairer repairer, Directory root,
+    {required bool dryRun, required bool quiet}) async {
   const settle = Duration(seconds: 15);
   final pending = <String, Timer>{};
 
@@ -91,7 +101,7 @@ Future<void> _watch(Directory root, {required bool dryRun, required bool quiet})
     final dir = Directory(folder);
     if (!await dir.exists()) return;
     try {
-      final repairs = await TagRepairer.planFolder(dir, root: root);
+      final repairs = await repairer.planFolder(dir, root: root);
       if (repairs.isEmpty) {
         if (!quiet) print('${_stamp()} ${_short(folder, root)}: nothing missing');
         return;
@@ -105,7 +115,7 @@ Future<void> _watch(Directory root, {required bool dryRun, required bool quiet})
   }
 
   // Start with whatever arrived while we were not running.
-  await _fixTree(root, dryRun: dryRun);
+  await _fixTree(repairer, root, dryRun: dryRun);
   print('${_stamp()} watching ${root.path}');
 
   await for (final event in root.watch(recursive: true)) {
@@ -175,11 +185,13 @@ mewsic-tagfix -- complete the tags of store purchases that arrive without names
 
   --dry-run   with fix/watch: report only, change nothing
   --quiet     with watch: log only when something is written
+  --offline   do not ask the iTunes Store; use only what is on disk
 
 Names are filled, never overwritten, from: the file's own sort-order atoms,
-album-mates sharing its iTunes Store IDs, the Artist/Album folder layout,
-and the filename (title and track number). Everything else in the file --
-artwork, store IDs, dates -- is left exactly as it was.
+the iTunes Store (looked up by the IDs the purchase carries -- also the
+source of cover art for files that have none), album-mates sharing those
+IDs, the Artist/Album folder layout, and the filename. Everything else in
+the file -- store IDs, dates, lyrics -- is left exactly as it was.
 
 [folder] defaults to ${_defaultRoot()}''');
 }

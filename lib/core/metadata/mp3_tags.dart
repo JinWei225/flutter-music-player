@@ -31,11 +31,51 @@ class Mp3TagParser {
     }
   }
 
+  /// The embedded front cover (`APIC`), or null when the file has none. Read
+  /// separately from [parse] because artwork is only needed for what is on
+  /// screen, not for every file in a library scan.
+  static Future<Uint8List?> readArtwork(File file) async {
+    final raf = await file.open();
+    try {
+      final length = await raf.length();
+      Uint8List? found;
+      await _readId3v2(raf, length, RawTags(), onFrame: (id, data) {
+        if (found != null || id != 'APIC' || data.length < 4) return;
+        // encoding, MIME (null-terminated), picture type, description
+        // (null-terminated in the frame's encoding), then the image.
+        final encoding = data[0];
+        var pos = 1;
+        while (pos < data.length && data[pos] != 0) {
+          pos++;
+        }
+        pos += 2; // MIME terminator + picture type
+        if (encoding == 1 || encoding == 2) {
+          while (pos + 1 < data.length && (data[pos] != 0 || data[pos + 1] != 0)) {
+            pos += 2;
+          }
+          pos += 2;
+        } else {
+          while (pos < data.length && data[pos] != 0) {
+            pos++;
+          }
+          pos += 1;
+        }
+        if (pos < data.length) found = data.sublist(pos);
+      });
+      return found;
+    } on FileSystemException {
+      return null;
+    } finally {
+      await raf.close();
+    }
+  }
+
   // --- ID3v2 ----------------------------------------------------------------
 
   /// Returns the total byte length of the ID3v2 block (0 when absent), which
   /// is also where the first MPEG audio frame begins.
-  static Future<int> _readId3v2(RandomAccessFile raf, int length, RawTags out) async {
+  static Future<int> _readId3v2(RandomAccessFile raf, int length, RawTags out,
+      {void Function(String id, Uint8List data)? onFrame}) async {
     if (length < 10) return 0;
     final header = await _readAt(raf, 0, 10);
     if (header.length < 10) return 0;
@@ -78,6 +118,7 @@ class Mp3TagParser {
       final data = body.sublist(dataStart, dataStart + frameSize);
 
       _applyFrame(id, data, out);
+      onFrame?.call(id, data);
       pos = dataStart + frameSize;
     }
 
@@ -113,6 +154,10 @@ class Mp3TagParser {
       case 'TPOS':
       case 'TPA':
         out.discNumber ??= _leadingInt(_decodeText(data));
+        break;
+      case 'APIC':
+      case 'PIC':
+        out.hasArtwork = true;
         break;
       case 'TYER': // v2.3 year
       case 'TYE':
