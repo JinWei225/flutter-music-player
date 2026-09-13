@@ -257,6 +257,7 @@ class Mp4TagParser {
                 break;
               case _year:
                 tags.year = text.length >= 4 ? text.substring(0, 4) : text;
+                tags.rawDate = text;
                 break;
               case _genreText:
                 tags.genre = text;
@@ -279,6 +280,9 @@ class Mp4TagParser {
     }
 
     // Only fills fields the real atoms did not provide.
+    tags.namesFromSortAtoms = (tags.title == null && sort.title != null) ||
+        (tags.artist == null && sort.artist != null) ||
+        (tags.album == null && sort.album != null);
     tags.backfillFrom(sort);
     return tags;
   }

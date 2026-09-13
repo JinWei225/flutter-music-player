@@ -118,7 +118,10 @@ class Mp3TagParser {
       case 'TYE':
       case 'TDRC': // v2.4 recording time, e.g. "2024-03-10T12:00:00"
         final v = _decodeText(data);
-        if (v != null && v.length >= 4) out.year ??= v.substring(0, 4);
+        if (v != null && v.length >= 4) {
+          out.year ??= v.substring(0, 4);
+          out.rawDate ??= v;
+        }
         break;
     }
   }

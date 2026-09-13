@@ -18,6 +18,15 @@ class RawTags {
   int? storeArtistId;
   int? storeAlbumId;
 
+  /// The release date exactly as the file spells it (`©day`, `TDRC`), so a
+  /// rewrite can put it back verbatim; [year] is the four digits shown.
+  String? rawDate;
+
+  /// True when title, artist or album came from a sort-order atom because
+  /// the real one was absent. Most players do not read those, so such a file
+  /// still shows as unknown elsewhere and is worth repairing.
+  bool namesFromSortAtoms = false;
+
   /// How many meaningful fields were recovered. Used to choose between
   /// competing tag blocks in a single file (see the MP4 parser's decoy `ilst`).
   int get fieldCount {
@@ -35,6 +44,14 @@ class RawTags {
   /// Fills in anything this block is missing from [other], so a weak ID3v1
   /// trailer can complete an ID3v2 header without overwriting it.
   void backfillFrom(RawTags other) {
+    // Names taken from a block that itself got them from sort atoms carry
+    // that provenance with them.
+    if (other.namesFromSortAtoms &&
+        ((title == null && other.title != null) ||
+            (artist == null && other.artist != null) ||
+            (album == null && other.album != null))) {
+      namesFromSortAtoms = true;
+    }
     title ??= other.title;
     artist ??= other.artist;
     album ??= other.album;
@@ -47,5 +64,6 @@ class RawTags {
     storeTrackId ??= other.storeTrackId;
     storeArtistId ??= other.storeArtistId;
     storeAlbumId ??= other.storeAlbumId;
+    rawDate ??= other.rawDate;
   }
 }

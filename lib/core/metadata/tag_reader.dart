@@ -58,7 +58,7 @@ class TagReader {
       path: path,
       // Desktop plays straight from the file it parsed.
       filePath: path,
-      title: _clean(tags.title) ?? _titleFromFileName(path),
+      title: _clean(tags.title) ?? titleFromFileName(path),
       artist: _clean(tags.artist) ?? folder?.artist ?? 'Unknown Artist',
       album: _clean(tags.album) ?? folder?.album ?? 'Unknown Album',
       albumArtist: _clean(tags.albumArtist) ?? '',
@@ -122,7 +122,7 @@ class TagReader {
   }
 
   /// Strips the extension and any leading track number ("04 Magic" -> "Magic").
-  static String _titleFromFileName(String path) {
+  static String titleFromFileName(String path) {
     var name = path.split(Platform.pathSeparator).last;
     final dot = name.lastIndexOf('.');
     if (dot > 0) name = name.substring(0, dot);

@@ -17,6 +17,9 @@ macOS and Windows targets in the tree.
 - **Volume persists** across restarts. Repeat defaults to *list*, and starting
   playback never leaves repeat off.
 - **Space** toggles play/pause on desktop.
+- **Edit Info** on any track (right-click, long-press, or the hover menu)
+  writes corrected tags back into the file itself, so the fix follows the
+  file to every other device and player.
 - **Light and dark themes**, remembered between launches.
 - **Background playback on Android**, with lock-screen and notification
   controls and cover art.
@@ -130,8 +133,9 @@ Drag **Mewsic.app** into `/Applications`. On first launch, right-click the app
 and choose *Open* — it is unsigned, so Gatekeeper refuses a plain double-click
 once.
 
-The macOS runner is sandboxed, and the entitlements grant read access to
-`~/Music`. Without that entitlement the song list comes up empty.
+The macOS runner is sandboxed, and the entitlements grant read and write
+access to `~/Music` (write is what lets *Edit Info* save tags). Without that
+entitlement the song list comes up empty.
 
 Songs managed by Apple Music live in `~/Music/Music/Media.localized`, which
 macOS protects separately. The first launch asks for **Media & Apple Music**
@@ -169,8 +173,8 @@ on a different machine.
 | `_accent` in `lib/ui/theme.dart` | every platform |
 | `ACCENT_TOP` / `ACCENT_BOTTOM` in `packaging/make_icons.py` | every platform |
 
-The macOS entitlement `com.apple.security.assets.music.read-only` is what lets
-the sandboxed app read `~/Music`; nothing else grants it. The extra scan root
+The macOS entitlement `com.apple.security.assets.music.read-write` is what lets
+the sandboxed app read `~/Music` and save tag edits there; nothing else grants it. The extra scan root
 is `~/Music/Music/Media.localized`, where Apple Music keeps purchased songs —
 Linux and Windows scan `~/Music` alone and never see that path.
 
@@ -246,6 +250,12 @@ rather than trusted from the operating system:
   with no `©nam` / `©ART` / `©alb` at all. Android's own media scanner reports
   these as `<unknown>` with the filename as the title; Mewsic falls back to the
   sort atoms and reads them correctly.
+- Some purchases arrive with **no names at all** -- just the iTunes Store IDs
+  (`cnID` / `atID` / `plID`), a date and a copyright line. Apple's Music app
+  shows them correctly only because it reads its own library database. Mewsic
+  lets such a track borrow artist, album, album artist and genre from any
+  album-mate that shares its store IDs, and on desktop falls back to the
+  `Artist/Album/` folder layout after that.
 - When a file has no `trkn` atom, the track number falls back to the leading
   digits of its filename, so the album keeps its running order.
 - A guest credit such as *"NAYEON & SAM KIM"* folds into the lead artist so it
@@ -254,6 +264,25 @@ rather than trusted from the operating system:
 
 On Android the MediaStore index is the starting point, but any row that looks
 like a scanner fallback is re-read with these parsers.
+
+### Fixing the files themselves: `mewsic-tagfix`
+
+All of that recovery only helps inside Mewsic. To make such files right for
+every player, the same logic can be run the other way -- written *into* the
+files -- by a small standalone tool that needs neither the app nor Flutter:
+
+```bash
+dart run bin/tagfix.dart check          # what is missing, and how it would be filled
+dart run bin/tagfix.dart fix            # write the missing names (--dry-run to preview)
+dart run bin/tagfix.dart watch          # keep running; fix new purchases as they land
+```
+
+Files are only ever completed, never changed: a field that is present stays
+as it is, and everything else in the file (artwork, store IDs, dates) is left
+untouched. On macOS, `packaging/install_tagfix_macos.sh` builds it as a
+standalone binary and registers a launch agent so `watch` runs at login
+against the Apple Music folder; `--uninstall` removes it again. The first run
+needs *Media & Apple Music* access under Privacy & Security.
 
 ## Known limitations
 
@@ -264,4 +293,4 @@ like a scanner fallback is re-read with these parsers.
   media session is Android-only.
 - **Album art** is read from a file's embedded cover when present. Files
   without one show a neutral tile; no artwork is fetched from the internet.
-- **No playlists, search, or library editing.**
+- **No playlists or search.**
