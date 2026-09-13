@@ -1,5 +1,6 @@
 import 'dart:io';
 
+import '../core/metadata/sibling_tags.dart';
 import '../core/metadata/tag_reader.dart';
 import '../core/models/track.dart';
 
@@ -87,13 +88,15 @@ class DirectoryLibrarySource implements LibrarySource {
   @override
   Future<List<Track>> loadTracks() async {
     // Keyed by path so overlapping roots -- ~/Music and the Apple Music folder
-    // nested inside it -- cannot yield the same file twice.
-    final files = <String, File>{};
+    // nested inside it -- cannot yield the same file twice. Each file remembers
+    // the root it was found under, which is what lets the tag reader tell an
+    // `<Artist>/<Album>/` folder apart from the library folder itself.
+    final files = <String, ({File file, Directory root})>{};
     final denied = <Directory>[];
 
     for (final root in roots) {
       if (!await root.exists()) continue;
-      if (!await _collect(root, 0, files)) denied.add(root);
+      if (!await _collect(root, root, 0, files)) denied.add(root);
     }
 
     // A denial only matters when it left us with nothing to show: with tracks
@@ -104,7 +107,18 @@ class DirectoryLibrarySource implements LibrarySource {
 
     // Tags are read concurrently; each parser only reads the handful of byte
     // ranges it needs, so this stays fast on a large library.
-    return Future.wait(files.values.map(TagReader.read));
+    final entries = files.values.toList();
+    final tags = await Future.wait(entries.map((f) => TagReader.parse(f.file)));
+
+    // Nameless store purchases borrow their names from album-mates before
+    // the per-file fallbacks get a say.
+    SiblingTags.complete(tags);
+
+    return [
+      for (var i = 0; i < entries.length; i++)
+        TagReader.toTrack(entries[i].file.path, tags[i],
+            libraryRoot: entries[i].root),
+    ];
   }
 
   static String _deniedMessage(List<Directory> denied) {
@@ -119,7 +133,8 @@ class DirectoryLibrarySource implements LibrarySource {
 
   /// Walks [dir], adding audio files to [out]. Returns false when the
   /// directory itself could not be read.
-  Future<bool> _collect(Directory dir, int depth, Map<String, File> out) async {
+  Future<bool> _collect(Directory root, Directory dir, int depth,
+      Map<String, ({File file, Directory root})> out) async {
     if (depth > _maxDepth) return true;
     late final List<FileSystemEntity> entries;
     try {
@@ -132,9 +147,9 @@ class DirectoryLibrarySource implements LibrarySource {
       final name = e.path.split(Platform.pathSeparator).last;
       if (name.startsWith('.')) continue;
       if (e is Directory) {
-        await _collect(e, depth + 1, out);
+        await _collect(root, e, depth + 1, out);
       } else if (e is File && TagReader.isSupported(e.path)) {
-        out[e.path] = e;
+        out[e.path] = (file: e, root: root);
       }
     }
     return true;

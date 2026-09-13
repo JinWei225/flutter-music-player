@@ -5,6 +5,7 @@ import 'package:flutter/services.dart';
 
 import '../core/metadata/mp4_tags.dart';
 import '../core/metadata/raw_tags.dart';
+import '../core/metadata/sibling_tags.dart';
 import '../core/metadata/tag_reader.dart';
 import '../core/models/track.dart';
 import 'library_source.dart';
@@ -38,55 +39,81 @@ class MediaStoreLibrarySource implements LibrarySource {
         await _channel.invokeMethod<List<dynamic>>('queryAudio');
     if (rows == null) return const [];
 
-    final tracks = <Track>[];
+    final entries = <_Entry>[];
     for (final row in rows.cast<Map<dynamic, dynamic>>()) {
-      tracks.add(await _toTrack(row));
+      entries.add(await _toEntry(row));
     }
-    return tracks;
+
+    // A nameless store purchase can borrow its names from album-mates that
+    // share its store IDs -- but MediaStore does not surface those IDs, so
+    // the well-indexed siblings are read once more to fetch them. Only done
+    // when there is a track that could benefit.
+    if (entries.any((e) => e.needsSiblings)) {
+      await Future.wait(entries
+          .where((e) => !e.reparsed && e.path != null && _isM4a(e.path!))
+          .map((e) async {
+        final parsed = await _reparse(e.path!);
+        if (parsed != null) {
+          e.tags
+            ..storeTrackId = parsed.storeTrackId
+            ..storeArtistId = parsed.storeArtistId
+            ..storeAlbumId = parsed.storeAlbumId;
+        }
+      }));
+      SiblingTags.complete(entries.map((e) => e.tags));
+    }
+
+    return [for (final e in entries) e.toTrack()];
   }
 
-  static Future<Track> _toTrack(Map<dynamic, dynamic> row) async {
+  static Future<_Entry> _toEntry(Map<dynamic, dynamic> row) async {
     final durationMs = row['durationMs'] as int?;
     final path = _text(row['path']);
 
-    var title = _text(row['title']);
-    var artist = _text(row['artist']);
-    var album = _text(row['album']);
-    var albumArtist = _text(row['albumArtist']);
-    var trackNumber = row['trackNumber'] as int?;
-    var discNumber = row['discNumber'] as int?;
-    var year = _text(row['year']);
+    final tags = RawTags()
+      ..title = _text(row['title'])
+      ..artist = _text(row['artist'])
+      ..album = _text(row['album'])
+      ..albumArtist = _text(row['albumArtist'])
+      ..trackNumber = row['trackNumber'] as int?
+      ..discNumber = row['discNumber'] as int?
+      ..year = _text(row['year'])
+      ..duration =
+          durationMs == null ? null : Duration(milliseconds: durationMs);
 
-    if (_looksUnindexed(title: title, artist: artist, path: path)) {
+    var reparsed = false;
+    if (_looksUnindexed(title: tags.title, artist: tags.artist, path: path)) {
       final parsed = await _reparse(path!);
       if (parsed != null) {
+        reparsed = true;
         // The scanner's values are the weaker source here, so parsed tags win.
-        title = _text(parsed.title) ?? title;
-        artist = _text(parsed.artist) ?? artist;
-        album = _text(parsed.album) ?? album;
-        albumArtist = _text(parsed.albumArtist) ?? albumArtist;
-        trackNumber ??= parsed.trackNumber;
-        discNumber ??= parsed.discNumber;
-        year ??= _text(parsed.year);
+        tags
+          ..title = _text(parsed.title) ?? tags.title
+          ..artist = _text(parsed.artist) ?? tags.artist
+          ..album = _text(parsed.album) ?? tags.album
+          ..albumArtist = _text(parsed.albumArtist) ?? tags.albumArtist
+          ..trackNumber ??= parsed.trackNumber
+          ..discNumber ??= parsed.discNumber
+          ..year ??= _text(parsed.year)
+          ..genre ??= _text(parsed.genre)
+          ..storeTrackId = parsed.storeTrackId
+          ..storeArtistId = parsed.storeArtistId
+          ..storeAlbumId = parsed.storeAlbumId;
       }
       // These files often carry no track number either; the filename's
       // leading digits are the only ordering hint left.
-      trackNumber ??= TagReader.trackNumberFromFileName(path);
+      tags.trackNumber ??= TagReader.trackNumberFromFileName(path);
     }
 
-    return Track(
-      path: row['source'] as String,
-      filePath: path,
-      title: title ?? 'Unknown Title',
-      artist: artist ?? 'Unknown Artist',
-      album: album ?? 'Unknown Album',
-      albumArtist: albumArtist ?? '',
-      trackNumber: trackNumber,
-      discNumber: discNumber,
-      year: year,
-      duration: durationMs == null ? null : Duration(milliseconds: durationMs),
+    return _Entry(
+      source: row['source'] as String,
+      path: path,
+      tags: tags,
+      reparsed: reparsed,
     );
   }
+
+  static bool _isM4a(String path) => path.toLowerCase().endsWith('.m4a');
 
   /// True when the row carries scanner fallbacks rather than real tags: no
   /// artist, or a title that is just the file's name.
@@ -95,7 +122,7 @@ class MediaStoreLibrarySource implements LibrarySource {
     required String? artist,
     required String? path,
   }) {
-    if (path == null || !path.toLowerCase().endsWith('.m4a')) return false;
+    if (path == null || !_isM4a(path)) return false;
     if (artist == null) return true;
 
     if (title == null) return true;
@@ -132,4 +159,41 @@ class MediaStoreLibrarySource implements LibrarySource {
   /// the Android side.
   Future<bool> _ensurePermission() async =>
       await _channel.invokeMethod<bool>('ensureAudioPermission') ?? false;
+}
+
+/// One MediaStore row on its way to becoming a [Track].
+class _Entry {
+  final String source;
+  final String? path;
+  final RawTags tags;
+
+  /// Whether the file itself has already been read (so its store IDs are
+  /// known) rather than only the scanner's row.
+  final bool reparsed;
+
+  _Entry({
+    required this.source,
+    required this.path,
+    required this.tags,
+    required this.reparsed,
+  });
+
+  /// A track still missing a name that a store ID could recover.
+  bool get needsSiblings =>
+      (tags.storeAlbumId != null || tags.storeArtistId != null) &&
+      (tags.artist == null || tags.album == null);
+
+  Track toTrack() => Track(
+        path: source,
+        filePath: path,
+        title: tags.title ?? 'Unknown Title',
+        artist: tags.artist ?? 'Unknown Artist',
+        album: tags.album ?? 'Unknown Album',
+        albumArtist: tags.albumArtist ?? '',
+        trackNumber: tags.trackNumber,
+        discNumber: tags.discNumber,
+        year: tags.year,
+        genre: tags.genre,
+        duration: tags.duration,
+      );
 }

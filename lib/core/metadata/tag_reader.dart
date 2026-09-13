@@ -14,13 +14,18 @@ class TagReader {
   static bool isSupported(String path) =>
       supportedExtensions.contains(_extension(path));
 
-  static Future<Track> read(File file) async {
-    final path = file.path;
-    final ext = _extension(path);
+  /// Parses a single file. Convenience for [parse] followed by [toTrack];
+  /// a library scan should call those separately so `SiblingTags` can run
+  /// over the whole batch in between.
+  static Future<Track> read(File file, {Directory? libraryRoot}) async =>
+      toTrack(file.path, await parse(file), libraryRoot: libraryRoot);
 
+  /// Reads whatever tags [file] carries. Never null: a malformed or untagged
+  /// file yields an empty [RawTags] so the fallbacks in [toTrack] apply.
+  static Future<RawTags> parse(File file) async {
     RawTags? tags;
     try {
-      switch (ext) {
+      switch (_extension(file.path)) {
         case '.m4a':
         case '.mp4':
         case '.m4b':
@@ -35,15 +40,27 @@ class TagReader {
       // A malformed file should drop to filename fallbacks, not sink the scan.
       tags = null;
     }
-    tags ??= RawTags();
+    return tags ?? RawTags();
+  }
+
+  /// Turns parsed [tags] into a [Track], filling gaps in this order: the
+  /// file's own tags, then the filename (title, track number), then the
+  /// folder layout (artist, album), then "Unknown".
+  ///
+  /// [libraryRoot] is the scanned folder the file was found under. When given,
+  /// a file with no artist or album tag borrows them from its folder names
+  /// (see [folderTagsFromPath]); without it those fall back to "Unknown".
+  static Track toTrack(String path, RawTags tags, {Directory? libraryRoot}) {
+    final folder =
+        libraryRoot == null ? null : folderTagsFromPath(path, libraryRoot);
 
     return Track(
       path: path,
       // Desktop plays straight from the file it parsed.
       filePath: path,
       title: _clean(tags.title) ?? _titleFromFileName(path),
-      artist: _clean(tags.artist) ?? 'Unknown Artist',
-      album: _clean(tags.album) ?? 'Unknown Album',
+      artist: _clean(tags.artist) ?? folder?.artist ?? 'Unknown Artist',
+      album: _clean(tags.album) ?? folder?.album ?? 'Unknown Album',
       albumArtist: _clean(tags.albumArtist) ?? '',
       trackNumber: tags.trackNumber ?? trackNumberFromFileName(path),
       discNumber: tags.discNumber,
@@ -76,6 +93,32 @@ class TagReader {
     if (match == null) return null;
     final value = int.tryParse(match.group(1)!);
     return (value == null || value == 0) ? null : value;
+  }
+
+  /// Recovers artist and album from an `<Artist>/<Album>/<file>` layout.
+  ///
+  /// Only a fallback, and a last-resort one: some iTunes Store purchases
+  /// arrive with *no* title, artist or album atoms at all -- just the store's
+  /// numeric IDs -- and Apple's own Music app only shows them correctly
+  /// because it reads its library database rather than the file. The folder
+  /// layout it writes is the one place the names survive on disk.
+  ///
+  /// Requires the file to sit at least two folders below [root], so a loose
+  /// `~/Music/song.mp3` never reports "Music" as its album and the home
+  /// folder as its artist.
+  static ({String artist, String album})? folderTagsFromPath(
+      String path, Directory root) {
+    final sep = Platform.pathSeparator;
+    final rootPath = root.path.endsWith(sep) ? root.path : '${root.path}$sep';
+    if (!path.startsWith(rootPath)) return null;
+
+    final parts = path.substring(rootPath.length).split(sep);
+    // Artist, album, file -- anything shallower is not a library layout.
+    if (parts.length < 3) return null;
+    final album = parts[parts.length - 2].trim();
+    final artist = parts[parts.length - 3].trim();
+    if (album.isEmpty || artist.isEmpty) return null;
+    return (artist: artist, album: album);
   }
 
   /// Strips the extension and any leading track number ("04 Magic" -> "Magic").

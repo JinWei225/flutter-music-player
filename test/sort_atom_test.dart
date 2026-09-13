@@ -29,6 +29,13 @@ Uint8List binaryAtom(String key, int wellKnownType, List<int> payload) {
   return b.toBytes();
 }
 
+/// An `ilst` entry holding a big-endian integer, as the store IDs are.
+Uint8List intAtom(String key, int value, {int bytes = 4}) {
+  final payload = [for (var i = bytes - 1; i >= 0; i--) (value >> (8 * i)) & 0xff];
+  // 21 == signed integer in iTunes' well-known types.
+  return binaryAtom(key, 21, payload);
+}
+
 /// An `ilst` entry: the 4cc wrapping a `data` box of UTF-8 text.
 Uint8List textAtom(String key, String value) {
   final data = BytesBuilder()
@@ -102,6 +109,28 @@ void main() {
     expect(tags.artist, 'Real Artist');
     expect(tags.album, 'Real Album');
     expect(tags.duration, const Duration(seconds: 9));
+  });
+
+  test('reads the iTunes Store catalogue IDs', () async {
+    // Shape of a purchase that arrives with no names whatsoever: nothing to
+    // show but the IDs, which are what link it to its album-mates.
+    final f = await write(
+      'nameless.m4a',
+      buildM4a([
+        intAtom('cnID', 1693905668),
+        intAtom('atID', 1451767737),
+        intAtom('plID', 1693905661, bytes: 8),
+        textAtom('©day', '2023-07-31T07:00:00Z'),
+      ]),
+    );
+
+    final tags = await Mp4TagParser.parse(f);
+    expect(tags!.title, isNull);
+    expect(tags.artist, isNull);
+    expect(tags.album, isNull);
+    expect(tags.storeTrackId, 1693905668);
+    expect(tags.storeArtistId, 1451767737);
+    expect(tags.storeAlbumId, 1693905661);
   });
 
   test('falls back to sort atoms when the name atoms are absent', () async {

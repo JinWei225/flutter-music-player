@@ -85,7 +85,7 @@ void main() {
       ),
       findsOneWidget,
     );
-    expect(find.text('11 songs'), findsOneWidget);
+    expect(find.text('17 songs'), findsOneWidget);
     // Titles come from the m4a tags, not the filenames.
     expect(find.text('ABCD'), findsWidgets);
     expect(find.text('Magic (feat. JULIE)'), findsWidgets);
@@ -97,7 +97,7 @@ void main() {
 
     library.setSort(SortField.artist, SortDirection.ascending);
     await tester.pumpAndSettle();
-    expect(library.sortedTracks.first.artist, 'NAYEON');
+    expect(library.sortedTracks.first.artist, 'ITZY');
 
     library.setSort(SortField.artist, SortDirection.descending);
     await tester.pumpAndSettle();
@@ -183,7 +183,7 @@ void main() {
     await tester.tap(find.text('Albums'));
     await tester.pumpAndSettle();
 
-    expect(find.text('2 albums'), findsOneWidget);
+    expect(find.text('3 albums'), findsOneWidget);
     expect(find.text('NA'), findsWidgets);
     expect(find.text('AIR - EP'), findsWidgets);
 
@@ -239,7 +239,7 @@ void main() {
 
     expect(find.byType(NowPlayingPanel), findsOneWidget);
     expect(find.text('Up next'), findsOneWidget);
-    expect(find.textContaining(RegExp(r'^\d+ of 11$')), findsOneWidget);
+    expect(find.textContaining(RegExp(r'^\d+ of 17$')), findsOneWidget);
     // The player bar keeps the transport; the panel does not repeat it.
     expect(find.byTooltip('Next'), findsOneWidget);
 
@@ -381,7 +381,7 @@ void main() {
 
       await tester.tap(find.byTooltip('Albums'));
       await tester.pumpAndSettle();
-      expect(find.text('2 albums'), findsOneWidget);
+      expect(find.text('3 albums'), findsOneWidget);
     });
 
     testWidgets('Now Playing slides over the library and dismisses on tap', (
@@ -427,7 +427,7 @@ void main() {
       // The desktop chrome must be gone.
       expect(find.byType(PlayerBar), findsNothing);
       // The track count is dropped here so the heading is not truncated.
-      expect(find.text('11 songs'), findsNothing);
+      expect(find.text('17 songs'), findsNothing);
       expect(find.text('ABCD'), findsWidgets);
     });
 
@@ -490,7 +490,7 @@ void main() {
 
       await tester.tap(find.text('Albums'));
       await tester.pumpAndSettle();
-      expect(find.text('2 albums'), findsOneWidget);
+      expect(find.text('3 albums'), findsOneWidget);
 
       await tester.tap(find.text('AIR - EP').first);
       await tester.pumpAndSettle();

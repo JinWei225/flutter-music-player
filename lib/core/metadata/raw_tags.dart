@@ -11,6 +11,13 @@ class RawTags {
   int? discNumber;
   Duration? duration;
 
+  /// iTunes Store catalogue IDs (`cnID`, `atID`, `plID`). Purchases always
+  /// carry these even when -- as some do -- they ship with no names at all,
+  /// so they are what lets a nameless track be matched to its album-mates.
+  int? storeTrackId;
+  int? storeArtistId;
+  int? storeAlbumId;
+
   /// How many meaningful fields were recovered. Used to choose between
   /// competing tag blocks in a single file (see the MP4 parser's decoy `ilst`).
   int get fieldCount {
@@ -37,5 +44,8 @@ class RawTags {
     trackNumber ??= other.trackNumber;
     discNumber ??= other.discNumber;
     duration ??= other.duration;
+    storeTrackId ??= other.storeTrackId;
+    storeArtistId ??= other.storeArtistId;
+    storeAlbumId ??= other.storeAlbumId;
   }
 }

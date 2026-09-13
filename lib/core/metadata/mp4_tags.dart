@@ -31,6 +31,13 @@ class Mp4TagParser {
   static const _sortAlbum = 'soal';
   static const _sortAlbumArtist = 'soaa';
 
+  // iTunes Store catalogue IDs. Some purchases arrive with nothing *but*
+  // these (no ©nam/©ART/©alb, not even the sort variants); the IDs are then
+  // the only link between such a track and the rest of its album.
+  static const _storeTrackId = 'cnID';
+  static const _storeArtistId = 'atID';
+  static const _storeAlbumId = 'plID';
+
   /// Container boxes whose children we may need to descend into.
   static const _maxBoxes = 4096;
 
@@ -220,6 +227,15 @@ class Mp4TagParser {
               if (id >= 0 && id < _id3v1Genres.length) tags.genre = _id3v1Genres[id];
             }
             break;
+          case _storeTrackId:
+            tags.storeTrackId = _nonZero(_bigEndian(payload));
+            break;
+          case _storeArtistId:
+            tags.storeArtistId = _nonZero(_bigEndian(payload));
+            break;
+          case _storeAlbumId:
+            tags.storeAlbumId = _nonZero(_bigEndian(payload));
+            break;
           default:
             // Type 1 is UTF-8 text; everything else here (artwork, ints) is
             // not something we surface.
@@ -281,6 +297,16 @@ class Mp4TagParser {
       (b[o] << 24) | (b[o + 1] << 16) | (b[o + 2] << 8) | b[o + 3];
 
   static int _u64(Uint8List b, int o) => (_u32(b, o) << 32) | _u32(b, o + 4);
+
+  /// Whole-payload integer: the store IDs are written as 4 or 8 bytes.
+  static int _bigEndian(Uint8List b) {
+    if (b.isEmpty || b.length > 8) return 0;
+    var v = 0;
+    for (final byte in b) {
+      v = (v << 8) | byte;
+    }
+    return v;
+  }
 
   static String _type(Uint8List b, int o) =>
       String.fromCharCodes(b.sublist(o, o + 4));

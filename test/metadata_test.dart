@@ -21,7 +21,7 @@ void main() {
     });
 
     test('finds every audio file', () {
-      expect(tracks.length, 11);
+      expect(tracks.length, 17);
     });
 
     test('every track has real tags, not filename fallbacks', () {
@@ -49,6 +49,23 @@ void main() {
       expect(abcd.year, '2024');
     });
 
+    test('recovers names for store purchases that ship without any', () {
+      // Three tracks of KILL MY DOUBT carry no ©nam/©ART/©alb -- not even
+      // the sort variants -- only the store IDs. Their names come from the
+      // tagged tracks of the same album, not from folder names.
+      for (final name in ['02 CAKE', '03 None of My Business', '05 Psychic Lover']) {
+        final t = tracks.firstWhere((t) => t.fileName.startsWith(name),
+            orElse: () => throw StateError('$name not scanned'));
+        expect(t.artist, 'ITZY', reason: name);
+        expect(t.album, 'KILL MY DOUBT - EP', reason: name);
+        expect(t.albumArtist, 'ITZY', reason: name);
+        expect(t.genre, 'K-Pop', reason: name);
+      }
+      final cake = tracks.firstWhere((t) => t.fileName.startsWith('02 CAKE'));
+      expect(cake.title, 'CAKE');
+      expect(cake.trackNumber, 2);
+    });
+
     test('preserves punctuation and parentheses in titles', () {
       final titles = tracks.map((t) => t.title).toSet();
       expect(titles, contains('Can’t Slow Me, No'));
@@ -57,9 +74,15 @@ void main() {
           contains('HalliGalli (Prod. by LEE CHANHYUK of AKMU)'));
     });
 
-    test('groups into the two expected albums, in track order', () {
+    test('groups into the three expected albums, in track order', () {
       final albums = Album.group(tracks);
-      expect(albums.map((a) => a.name).toList(), ['AIR - EP', 'NA']);
+      expect(albums.map((a) => a.name).toList(),
+          ['AIR - EP', 'KILL MY DOUBT - EP', 'NA']);
+
+      final kmd = albums.firstWhere((a) => a.name == 'KILL MY DOUBT - EP');
+      expect(kmd.artist, 'ITZY');
+      expect(kmd.tracks.length, 6);
+      expect(kmd.tracks.map((t) => t.trackNumber), [1, 2, 3, 4, 5, 6]);
 
       final air = albums.firstWhere((a) => a.name == 'AIR - EP');
       expect(air.artist, 'YEJI');
@@ -96,11 +119,12 @@ void main() {
     test('artist sort groups an artist together', () {
       library.setSort(SortField.artist, SortDirection.ascending);
       final artists = library.sortedTracks.map((t) => t.artist).toList();
-      // The 7 NA tracks come before YEJI's 4, with no interleaving. One of
-      // them is credited to a collaboration, which sorts inside NAYEON's run
-      // rather than breaking it up.
-      expect(artists.take(7).toSet(), {'NAYEON', 'NAYEON & SAM KIM'});
-      expect(artists.skip(7).toSet(), {'YEJI'});
+      // ITZY's 6, then the 7 NA tracks, then YEJI's 4, with no interleaving.
+      // One NA track is credited to a collaboration, which sorts inside
+      // NAYEON's run rather than breaking it up.
+      expect(artists.take(6).toSet(), {'ITZY'});
+      expect(artists.skip(6).take(7).toSet(), {'NAYEON', 'NAYEON & SAM KIM'});
+      expect(artists.skip(13).toSet(), {'YEJI'});
     });
 
     test('album sort orders by album then track number', () {
@@ -108,7 +132,11 @@ void main() {
       final sorted = library.sortedTracks;
       expect(sorted.take(4).map((t) => t.album).toSet(), {'AIR - EP'});
       expect(sorted.take(4).map((t) => t.trackNumber), [1, 2, 3, 4]);
-      expect(sorted.skip(4).map((t) => t.trackNumber), [1, 2, 3, 4, 5, 6, 7]);
+      expect(sorted.skip(4).take(6).map((t) => t.album).toSet(),
+          {'KILL MY DOUBT - EP'});
+      expect(sorted.skip(4).take(6).map((t) => t.trackNumber),
+          [1, 2, 3, 4, 5, 6]);
+      expect(sorted.skip(10).map((t) => t.trackNumber), [1, 2, 3, 4, 5, 6, 7]);
     });
 
     test('selectSortField flips direction when reselected', () {
@@ -133,6 +161,30 @@ void main() {
       expect(track.title, 'Untagged');
       expect(track.artist, 'Unknown Artist');
       expect(track.album, 'Unknown Album');
+    });
+
+    test('borrows artist and album from the folder layout when asked', () async {
+      final root = await Directory.systemTemp.createTemp('lib');
+      addTearDown(() => root.delete(recursive: true));
+      final sep = Platform.pathSeparator;
+      final file = await File('${root.path}${sep}ITZY${sep}KILL MY DOUBT - EP'
+              '${sep}02 CAKE.m4a')
+          .create(recursive: true);
+      await file.writeAsBytes(List.filled(64, 0));
+
+      final track = await TagReader.read(file, libraryRoot: root);
+      expect(track.title, 'CAKE');
+      expect(track.artist, 'ITZY');
+      expect(track.album, 'KILL MY DOUBT - EP');
+      expect(track.trackNumber, 2);
+
+      // A file sitting loose in the root gets nothing from its path.
+      final loose = await File('${root.path}${sep}03 Loose.m4a').create();
+      await loose.writeAsBytes(List.filled(64, 0));
+      final looseTrack = await TagReader.read(loose, libraryRoot: root);
+      expect(looseTrack.artist, 'Unknown Artist');
+      expect(looseTrack.album, 'Unknown Album');
+      expect(TagReader.folderTagsFromPath('/elsewhere/a/b/c.m4a', root), isNull);
     });
 
     test('recovers a track number from a numbered filename', () {
