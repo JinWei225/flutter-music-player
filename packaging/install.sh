@@ -44,7 +44,7 @@ cd "$PROJECT"
 flutter build linux --release
 
 BUNDLE="$PROJECT/build/linux/x64/release/bundle"
-[[ -x "$BUNDLE/custom_music_player" ]] || { echo "Build produced no binary"; exit 1; }
+[[ -x "$BUNDLE/Mewsic" ]] || { echo "Build produced no binary"; exit 1; }
 
 # --- install the bundle --------------------------------------------------
 # The executable needs its sibling lib/ and data/ directories, so the whole
@@ -56,7 +56,7 @@ mkdir -p "$INSTALL_DIR"
 cp -r "$BUNDLE/." "$INSTALL_DIR/"
 
 mkdir -p "$(dirname "$BIN_LINK")"
-ln -sf "$INSTALL_DIR/custom_music_player" "$BIN_LINK"
+ln -sf "$INSTALL_DIR/Mewsic" "$BIN_LINK"
 
 # --- icons ---------------------------------------------------------------
 echo "Installing icons..."
@@ -76,7 +76,7 @@ Version=1.0
 Name=$APP_NAME
 GenericName=Music Player
 Comment=Play your local music library
-Exec=$INSTALL_DIR/custom_music_player %U
+Exec=$INSTALL_DIR/Mewsic %U
 Icon=$APP_ID
 Terminal=false
 Categories=AudioVideo;Audio;Player;
@@ -92,6 +92,6 @@ gtk-update-icon-cache -f -t "$ICON_DIR" 2>/dev/null || true
 
 echo
 echo "Installed. Press Super and type \"$APP_NAME\" to launch it."
-echo "  binary : $INSTALL_DIR/custom_music_player"
+echo "  binary : $INSTALL_DIR/Mewsic"
 echo "  cli    : $BIN_LINK"
 echo "  entry  : $DESKTOP_FILE"
