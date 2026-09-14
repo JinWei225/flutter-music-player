@@ -12,8 +12,8 @@ import sys
 from PIL import Image, ImageDraw, ImageFont
 
 GLYPH = 0xF7BD  # Icons.graphic_eq_rounded
-ACCENT_TOP = (148, 199, 88)  # #94C758
-ACCENT_BOTTOM = (113, 146, 74)  # #71924A
+ACCENT_TOP = (182, 129, 93)  # #B6815D
+ACCENT_BOTTOM = (129, 99, 78)  # #81634E
 SIZES = [16, 24, 32, 48, 64, 128, 256, 512]
 
 FONT_RELATIVE = "bin/cache/artifacts/material_fonts/MaterialIcons-Regular.otf"
