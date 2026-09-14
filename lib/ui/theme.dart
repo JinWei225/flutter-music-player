@@ -20,7 +20,7 @@ class ThemeController extends ChangeNotifier {
 }
 
 class AppTheme {
-  static const _accent = Color(0xFF8BC34A);
+  static const _accent = Color(0xFFB07750);
 
   /// Extra surfaces the Material scheme has no direct slot for.
   static const darkSidebar = Color(0xFF0E0D11);
