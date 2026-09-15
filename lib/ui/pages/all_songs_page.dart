@@ -7,6 +7,7 @@ import '../../core/player/player_model.dart';
 import '../breakpoints.dart';
 import '../theme.dart';
 import '../widgets/edit_track_info_dialog.dart';
+import '../widgets/play_next.dart';
 import '../widgets/track_row.dart';
 
 class AllSongsPage extends StatelessWidget {
@@ -44,7 +45,8 @@ class AllSongsPage extends StatelessWidget {
                           // Playing from this page queues the list exactly as
                           // it is currently sorted.
                           onPlay: () => player.playTracks(tracks, startIndex: i),
-                          onEdit: editTrackAction(context, t),
+                          onPlayNext: playNextAction(context, t),
+                onEdit: editTrackAction(context, t),
                         );
                       },
                     ),

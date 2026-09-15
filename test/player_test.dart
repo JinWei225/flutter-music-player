@@ -169,6 +169,132 @@ void main() {
     });
   });
 
+  group('play next', () {
+    List<String> titles(PlayerModel p) =>
+        [for (final t in p.queueInPlayOrder) t.title];
+
+    test('moves a queued track to right after the current one', () async {
+      final p = await makePlayer();
+      await p.playTracks(tracks, startIndex: 0);
+      await p.playNext(tracks[3]);
+      expect(titles(p), ['Song 1', 'Song 4', 'Song 2', 'Song 3', 'Song 5']);
+      expect(p.currentTrack, tracks[0], reason: 'nothing should jump');
+      await p.next();
+      expect(p.currentTrack, tracks[3]);
+    });
+
+    test('a second pick lands after the first, not in front of it', () async {
+      final p = await makePlayer();
+      await p.playTracks(tracks, startIndex: 0);
+      await p.playNext(tracks[3]);
+      await p.playNext(tracks[4]);
+      expect(titles(p), ['Song 1', 'Song 4', 'Song 5', 'Song 2', 'Song 3']);
+      await p.next();
+      expect(p.currentTrack, tracks[3]);
+      await p.next();
+      expect(p.currentTrack, tracks[4]);
+      await p.next();
+      expect(p.currentTrack, tracks[1]);
+    });
+
+    test('the run shrinks as it is played through', () async {
+      final p = await makePlayer();
+      await p.playTracks(tracks, startIndex: 0);
+      await p.playNext(tracks[3]);
+      await p.playNext(tracks[4]);
+      expect(p.pendingPlayNextCount, 2);
+      await p.next(); // now on Song 4, Song 5 still pending
+      expect(p.pendingPlayNextCount, 1);
+      await p.playNext(tracks[2]);
+      // Song 3 goes after Song 5, which was queued earlier.
+      expect(titles(p), ['Song 1', 'Song 4', 'Song 5', 'Song 3', 'Song 2']);
+      await p.next();
+      await p.next();
+      await p.next();
+      expect(p.pendingPlayNextCount, 0);
+    });
+
+    test('a track from before the cursor keeps the current track in place',
+        () async {
+      final p = await makePlayer();
+      await p.playTracks(tracks, startIndex: 3);
+      await p.playNext(tracks[0]);
+      expect(p.currentTrack, tracks[3]);
+      expect(titles(p), ['Song 2', 'Song 3', 'Song 4', 'Song 1', 'Song 5']);
+      expect(p.currentQueuePosition, 2);
+    });
+
+    test('picking the current track is a no-op', () async {
+      final p = await makePlayer();
+      await p.playTracks(tracks, startIndex: 1);
+      await p.playNext(tracks[1]);
+      expect(p.queueInPlayOrder, tracks);
+      expect(p.pendingPlayNextCount, 0);
+    });
+
+    test('re-picking a pending track sends it to the back of the run',
+        () async {
+      final p = await makePlayer();
+      await p.playTracks(tracks, startIndex: 0);
+      await p.playNext(tracks[3]);
+      await p.playNext(tracks[4]);
+      await p.playNext(tracks[3]);
+      expect(titles(p), ['Song 1', 'Song 5', 'Song 4', 'Song 2', 'Song 3']);
+      expect(p.pendingPlayNextCount, 2);
+    });
+
+    test('a track from outside the queue is added, not duplicated', () async {
+      final p = await makePlayer();
+      await p.playTracks(tracks.sublist(0, 3), startIndex: 0);
+      final outsider = _track(9);
+      await p.playNext(outsider);
+      await p.playNext(outsider);
+      expect(titles(p), ['Song 1', 'Song 9', 'Song 2', 'Song 3']);
+    });
+
+    test('with nothing playing it just plays the track', () async {
+      final p = await makePlayer();
+      await p.playNext(tracks[2]);
+      expect(p.currentTrack, tracks[2]);
+      expect(p.isPlaying, isTrue);
+    });
+
+    test('jumping elsewhere in the queue abandons the run', () async {
+      final p = await makePlayer();
+      await p.playTracks(tracks, startIndex: 0);
+      await p.playNext(tracks[3]);
+      await p.playQueuePosition(3);
+      expect(p.pendingPlayNextCount, 0);
+      // Tracks stay where they were; only the grouping is gone.
+      expect(titles(p), ['Song 1', 'Song 4', 'Song 2', 'Song 3', 'Song 5']);
+    });
+
+    test('survives toggling shuffle on and off', () async {
+      final p = await makePlayer(seed: 3);
+      await p.playTracks(tracks, startIndex: 0);
+      await p.playNext(tracks[3]);
+      await p.playNext(tracks[4]);
+      p.toggleShuffle();
+      var order = p.queueInPlayOrder;
+      expect(p.currentTrack, tracks[0]);
+      expect(order.sublist(1, 3), [tracks[3], tracks[4]]);
+      expect(order.toSet().length, tracks.length);
+      p.toggleShuffle();
+      expect(titles(p), ['Song 1', 'Song 4', 'Song 5', 'Song 2', 'Song 3']);
+      expect(p.currentTrack, tracks[0]);
+      expect(p.pendingPlayNextCount, 2);
+    });
+
+    test('starting a new queue clears the run', () async {
+      final p = await makePlayer();
+      await p.playTracks(tracks, startIndex: 0);
+      await p.playNext(tracks[3]);
+      await p.playTracks(tracks, startIndex: 2);
+      expect(p.pendingPlayNextCount, 0);
+      expect(p.queueInPlayOrder, tracks);
+    });
+  });
+
   group('repeat', () {
     test('defaults to repeat-list', () async {
       final p = await makePlayer();

@@ -27,6 +27,13 @@ class PlayerModel extends ChangeNotifier {
   /// Cursor into [_order].
   int _position = -1;
 
+  /// How many entries directly after [_position] were put there by
+  /// [playNext] and have not been reached yet. A further "Play Next" lands
+  /// after them rather than in front, so queuing A then B plays A, then B --
+  /// the run grows at its tail like a small queue of its own. It shrinks as
+  /// playback advances through it and is forgotten on any other jump.
+  int _pendingPlayNext = 0;
+
   bool _shuffle = false;
 
   /// Repeat-all is the default, and starting playback never leaves it off.
@@ -36,12 +43,9 @@ class PlayerModel extends ChangeNotifier {
   bool _disposed = false;
   final List<StreamSubscription<void>> _subscriptions = [];
 
-  PlayerModel(
-    this._settings, {
-    AudioBackend? audio,
-    Random? random,
-  })  : _audio = audio ?? JustAudioBackend(),
-        _random = random ?? Random() {
+  PlayerModel(this._settings, {AudioBackend? audio, Random? random})
+    : _audio = audio ?? JustAudioBackend(),
+      _random = random ?? Random() {
     _volume = _settings.volume;
     _audio.setVolume(_volume);
     _subscriptions.add(_audio.completions.listen((_) => _onTrackCompleted()));
@@ -85,6 +89,10 @@ class PlayerModel extends ChangeNotifier {
   /// Index of the now-playing track within [queueInPlayOrder].
   int get currentQueuePosition => _position;
 
+  /// Number of tracks after the current one that were queued with
+  /// [playNext] and are still to come.
+  int get pendingPlayNextCount => _pendingPlayNext;
+
   Stream<Duration> get positionStream => _audio.positionStream;
   Stream<Duration?> get durationStream => _audio.durationStream;
 
@@ -103,6 +111,7 @@ class PlayerModel extends ChangeNotifier {
     if (tracks.isEmpty) return;
 
     _queue = List.of(tracks);
+    _pendingPlayNext = 0;
     if (shuffle != null) _shuffle = shuffle;
 
     // Starting playback always leaves repeat at least on "list"; an explicit
@@ -130,12 +139,44 @@ class PlayerModel extends ChangeNotifier {
   /// Jumps to a position within the existing playback order.
   Future<void> playQueuePosition(int position) async {
     if (position < 0 || position >= _order.length) return;
-    _position = position;
+    _moveTo(position);
     await _loadCurrent(autoPlay: true);
   }
 
-  Future<void> togglePlayPause() =>
-      _audio.playing ? pause() : resume();
+  /// Queues [track] to play after the current one -- or, when something has
+  /// already been queued that way, after the last of those, so repeated
+  /// "Play Next" picks play in the order they were chosen.
+  ///
+  /// A track already in the queue is moved rather than duplicated; one from
+  /// outside it is added. With nothing playing it simply starts playing.
+  Future<void> playNext(Track track) async {
+    if (_order.isEmpty) {
+      await playTracks([track]);
+      return;
+    }
+    final current = _currentQueueIndex;
+    if (current != null && _queue[current] == track) return;
+
+    var queueIndex = _queue.indexOf(track);
+    if (queueIndex < 0) {
+      _queue.add(track);
+      queueIndex = _queue.length - 1;
+    } else {
+      final at = _order.indexOf(queueIndex);
+      _order.removeAt(at);
+      if (at < _position) {
+        _position--;
+      } else if (at <= _position + _pendingPlayNext) {
+        // It was already in the run; it now goes to the back of it.
+        _pendingPlayNext--;
+      }
+    }
+    _order.insert(_position + 1 + _pendingPlayNext, queueIndex);
+    _pendingPlayNext++;
+    _safeNotify();
+  }
+
+  Future<void> togglePlayPause() => _audio.playing ? pause() : resume();
 
   /// Explicit start, as opposed to [togglePlayPause]. The media-session
   /// controls use these so a notification button can never invert the state
@@ -157,9 +198,9 @@ class PlayerModel extends ChangeNotifier {
   Future<void> next() async {
     if (_order.isEmpty) return;
     if (_position + 1 < _order.length) {
-      _position++;
+      _moveTo(_position + 1);
     } else if (_repeat != RepeatMode.off) {
-      _position = 0;
+      _moveTo(0);
     } else {
       await _audio.pause();
       await _audio.seek(Duration.zero);
@@ -179,9 +220,9 @@ class PlayerModel extends ChangeNotifier {
       return;
     }
     if (_position > 0) {
-      _position--;
+      _moveTo(_position - 1);
     } else if (_repeat != RepeatMode.off) {
-      _position = _order.length - 1;
+      _moveTo(_order.length - 1);
     } else {
       await _audio.seek(Duration.zero);
       _safeNotify();
@@ -202,6 +243,13 @@ class PlayerModel extends ChangeNotifier {
     }
 
     final current = _currentQueueIndex;
+    // Whatever was queued with "Play Next" still plays next: it is lifted
+    // out before the order is rebuilt and put straight back after the
+    // current track.
+    final pending = _order.sublist(
+      _position + 1,
+      _position + 1 + _pendingPlayNext,
+    );
     if (_shuffle) {
       _order = List.generate(_queue.length, (i) => i)..shuffle(_random);
       if (current != null) {
@@ -213,6 +261,11 @@ class PlayerModel extends ChangeNotifier {
     } else {
       _order = List.generate(_queue.length, (i) => i);
       _position = current ?? 0;
+    }
+    if (pending.isNotEmpty) {
+      _order.removeWhere(pending.contains);
+      _position = _order.indexOf(current!);
+      _order.insertAll(_position + 1, pending);
     }
     _safeNotify();
   }
@@ -235,6 +288,17 @@ class PlayerModel extends ChangeNotifier {
 
   // --- internals ------------------------------------------------------------
 
+  /// Moves the cursor, keeping the play-next run in step: stepping forward
+  /// into it consumes that many entries, anything else abandons the run
+  /// (the tracks stay where they are, they just stop counting as "next").
+  void _moveTo(int position) {
+    final ahead = position - _position;
+    _pendingPlayNext = ahead > 0 && ahead <= _pendingPlayNext
+        ? _pendingPlayNext - ahead
+        : 0;
+    _position = position;
+  }
+
   Future<void> _loadCurrent({bool autoPlay = false}) async {
     final track = currentTrack;
     if (track == null) return;
@@ -246,7 +310,7 @@ class PlayerModel extends ChangeNotifier {
       debugPrint('Failed to play ${track.path}: $e');
       // A single unreadable file should not strand the queue.
       if (_position + 1 < _order.length) {
-        _position++;
+        _moveTo(_position + 1);
         await _loadCurrent(autoPlay: autoPlay);
         return;
       }

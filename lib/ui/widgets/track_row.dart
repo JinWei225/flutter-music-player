@@ -27,9 +27,10 @@ const EdgeInsets kRowPadding = EdgeInsets.fromLTRB(16, 0, 48, 0);
 
 /// One row in a track listing. [leading] is the row's index or track number.
 ///
-/// When [onEdit] is given the row grows a menu -- reached by right-click, a
-/// long press, or the "more" button that appears on hover -- whose one entry
-/// opens the track's tags for editing.
+/// When [onPlayNext] or [onEdit] is given the row grows a menu -- reached by
+/// right-click, a long press, or the "more" button that appears on hover --
+/// with an entry for each: queue the track to play next, or open its tags
+/// for editing.
 class TrackRow extends StatefulWidget {
   final String leading;
   final String title;
@@ -38,6 +39,7 @@ class TrackRow extends StatefulWidget {
   final Duration? duration;
   final bool isCurrent;
   final VoidCallback onPlay;
+  final VoidCallback? onPlayNext;
   final VoidCallback? onEdit;
 
   const TrackRow({
@@ -49,8 +51,11 @@ class TrackRow extends StatefulWidget {
     required this.onPlay,
     this.artist,
     this.album,
+    this.onPlayNext,
     this.onEdit,
   });
+
+  bool get hasMenu => onPlayNext != null || onEdit != null;
 
   @override
   State<TrackRow> createState() => _TrackRowState();
@@ -59,29 +64,22 @@ class TrackRow extends StatefulWidget {
 class _TrackRowState extends State<TrackRow> {
   bool _hovered = false;
 
-  /// Pops the row menu at [at] (global). One item for now; a place for
-  /// "Add to queue" and friends later.
+  /// Pops the row menu at [at] (global).
   Future<void> _showMenu(Offset at) async {
-    final overlay = Overlay.of(context).context.findRenderObject() as RenderBox;
-    final choice = await showMenu<_RowAction>(
-      context: context,
-      position: RelativeRect.fromRect(
-        at & const Size(1, 1),
-        Offset.zero & overlay.size,
-      ),
-      items: const [
-        PopupMenuItem(
-          value: _RowAction.edit,
-          child: ListTile(
-            dense: true,
-            contentPadding: EdgeInsets.zero,
-            leading: Icon(Icons.edit_outlined, size: 18),
-            title: Text('Edit Info…'),
-          ),
-        ),
-      ],
+    final choice = await showTrackMenu(
+      context,
+      at,
+      playNext: widget.onPlayNext != null,
+      edit: widget.onEdit != null,
     );
-    if (choice == _RowAction.edit) widget.onEdit?.call();
+    switch (choice) {
+      case TrackAction.playNext:
+        widget.onPlayNext?.call();
+      case TrackAction.edit:
+        widget.onEdit?.call();
+      case null:
+        break;
+    }
   }
 
   @override
@@ -110,12 +108,12 @@ class _TrackRowState extends State<TrackRow> {
             // There is no selection concept in the list, so a single tap plays
             // rather than doing nothing.
             onTap: widget.onPlay,
-            onSecondaryTapUp: widget.onEdit == null
-                ? null
-                : (d) => _showMenu(d.globalPosition),
-            onLongPressStart: widget.onEdit == null
-                ? null
-                : (d) => _showMenu(d.globalPosition),
+            onSecondaryTapUp: widget.hasMenu
+                ? (d) => _showMenu(d.globalPosition)
+                : null,
+            onLongPressStart: widget.hasMenu
+                ? (d) => _showMenu(d.globalPosition)
+                : null,
             // Opaque so the gaps between columns and the padding count as the
             // row. The container below only paints (and so only hit-tests)
             // when hovered or current, which a finger never is.
@@ -133,7 +131,7 @@ class _TrackRowState extends State<TrackRow> {
                 ),
                 // Sits in the row's trailing padding, so the columns keep
                 // their alignment with the header whether or not it shows.
-                if (_hovered && widget.onEdit != null)
+                if (_hovered && widget.hasMenu)
                   Positioned(
                     right: 10,
                     top: 0,
@@ -308,7 +306,48 @@ class _TrackRowState extends State<TrackRow> {
   }
 }
 
-enum _RowAction { edit }
+enum TrackAction { playNext, edit }
+
+/// The context menu shared by the library rows and the queue rows, popped at
+/// [at] (global). Only the actions asked for are listed; the result is null
+/// when the menu is dismissed.
+Future<TrackAction?> showTrackMenu(
+  BuildContext context,
+  Offset at, {
+  bool playNext = true,
+  bool edit = false,
+}) {
+  final overlay = Overlay.of(context).context.findRenderObject() as RenderBox;
+  return showMenu<TrackAction>(
+    context: context,
+    position: RelativeRect.fromRect(
+      at & const Size(1, 1),
+      Offset.zero & overlay.size,
+    ),
+    items: [
+      if (playNext)
+        const PopupMenuItem(
+          value: TrackAction.playNext,
+          child: ListTile(
+            dense: true,
+            contentPadding: EdgeInsets.zero,
+            leading: Icon(Icons.playlist_play_rounded, size: 18),
+            title: Text('Play Next'),
+          ),
+        ),
+      if (edit)
+        const PopupMenuItem(
+          value: TrackAction.edit,
+          child: ListTile(
+            dense: true,
+            contentPadding: EdgeInsets.zero,
+            leading: Icon(Icons.edit_outlined, size: 18),
+            title: Text('Edit Info…'),
+          ),
+        ),
+    ],
+  );
+}
 
 /// Column headings matching [TrackRow]'s layout, dropping the same columns at
 /// the same widths.

@@ -115,6 +115,9 @@ class NowPlayingPanel extends StatelessWidget {
                           isCurrent: index == position,
                           isPast: index < position,
                           onTap: () => player.playQueuePosition(index),
+                          onPlayNext: index == position
+                              ? null
+                              : () => player.playNext(t),
                         );
                       },
                     ),

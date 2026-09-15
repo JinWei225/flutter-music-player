@@ -3,9 +3,11 @@ import 'package:provider/provider.dart';
 
 import '../../../core/player/player_model.dart';
 import '../../theme.dart';
+import '../track_row.dart' show showTrackMenu, TrackAction;
 
 /// The queue in playback order, so it reflects shuffle. Tapping a row jumps
-/// to it.
+/// to it; right-click or long-press offers "Play Next", which pulls the row
+/// up behind the current track.
 class QueueList extends StatelessWidget {
   /// Size to the content instead of scrolling, for use inside another scroll
   /// view.
@@ -42,6 +44,7 @@ class QueueList extends StatelessWidget {
           isPast: i < current,
           horizontalPadding: horizontalPadding,
           onTap: () => player.playQueuePosition(i),
+          onPlayNext: i == current ? null : () => player.playNext(t),
         );
       },
     );
@@ -58,6 +61,10 @@ class QueueRow extends StatelessWidget {
   final double horizontalPadding;
   final VoidCallback onTap;
 
+  /// Null for the row that is playing: it is already "next" as far as the
+  /// queue is concerned, so the menu is left out.
+  final VoidCallback? onPlayNext;
+
   const QueueRow({
     super.key,
     required this.index,
@@ -67,8 +74,14 @@ class QueueRow extends StatelessWidget {
     required this.isCurrent,
     required this.isPast,
     required this.onTap,
+    this.onPlayNext,
     this.horizontalPadding = 16,
   });
+
+  Future<void> _showMenu(BuildContext context, Offset at) async {
+    final choice = await showTrackMenu(context, at);
+    if (choice == TrackAction.playNext) onPlayNext?.call();
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -85,59 +98,69 @@ class QueueRow extends StatelessWidget {
       alpha: isPast ? 0.5 : 1,
     );
 
-    return InkWell(
-      onTap: onTap,
-      hoverColor: surfaces.hover,
-      child: Container(
-        color: isCurrent ? scheme.primary.withValues(alpha: 0.10) : null,
-        padding: EdgeInsets.symmetric(
-          horizontal: horizontalPadding,
-          vertical: 8,
-        ),
-        child: Row(
-          children: [
-            SizedBox(
-              width: 22,
-              child: isCurrent
-                  ? Icon(
-                      Icons.equalizer_rounded,
-                      size: 15,
-                      color: scheme.primary,
-                    )
-                  : Text(
-                      '${index + 1}',
+    return GestureDetector(
+      onSecondaryTapUp: onPlayNext == null
+          ? null
+          : (d) => _showMenu(context, d.globalPosition),
+      onLongPressStart: onPlayNext == null
+          ? null
+          : (d) => _showMenu(context, d.globalPosition),
+      child: InkWell(
+        onTap: onTap,
+        hoverColor: surfaces.hover,
+        child: Container(
+          color: isCurrent ? scheme.primary.withValues(alpha: 0.10) : null,
+          padding: EdgeInsets.symmetric(
+            horizontal: horizontalPadding,
+            vertical: 8,
+          ),
+          child: Row(
+            children: [
+              SizedBox(
+                width: 22,
+                child: isCurrent
+                    ? Icon(
+                        Icons.equalizer_rounded,
+                        size: 15,
+                        color: scheme.primary,
+                      )
+                    : Text(
+                        '${index + 1}',
+                        style: TextStyle(fontSize: 11, color: mutedColor),
+                      ),
+              ),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      title,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(
+                        fontSize: 13,
+                        fontWeight: isCurrent
+                            ? FontWeight.w600
+                            : FontWeight.w500,
+                        color: titleColor,
+                      ),
+                    ),
+                    Text(
+                      artist,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
                       style: TextStyle(fontSize: 11, color: mutedColor),
                     ),
-            ),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    title,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: TextStyle(
-                      fontSize: 13,
-                      fontWeight: isCurrent ? FontWeight.w600 : FontWeight.w500,
-                      color: titleColor,
-                    ),
-                  ),
-                  Text(
-                    artist,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: TextStyle(fontSize: 11, color: mutedColor),
-                  ),
-                ],
+                  ],
+                ),
               ),
-            ),
-            const SizedBox(width: 8),
-            Text(
-              formatDuration(duration),
-              style: TextStyle(fontSize: 11, color: mutedColor),
-            ),
-          ],
+              const SizedBox(width: 8),
+              Text(
+                formatDuration(duration),
+                style: TextStyle(fontSize: 11, color: mutedColor),
+              ),
+            ],
+          ),
         ),
       ),
     );
