@@ -437,6 +437,25 @@ void main() {
       expect(p.currentTrack, tracks[2], reason: 'should skip past the bad file');
     });
 
+    test('a load overtaken by a newer one does not skip ahead', () async {
+      final backend = audio = _InterruptibleBackend();
+      final p = PlayerModel(settings, audio: audio, random: Random(1));
+      final start = p.playTracks(tracks, startIndex: 0);
+      backend.finishLoad();
+      await start;
+
+      // Two quick presses of Next: the engine aborts the first load with an
+      // error when the second one starts, as just_audio does.
+      final first = p.next();
+      final second = p.next();
+      backend.finishLoad();
+      await Future.wait([first, second]);
+
+      expect(p.currentTrack, tracks[2],
+          reason: 'the aborted load must not be mistaken for a bad file');
+      expect(backend.loadedPath, '/music/3.m4a');
+    });
+
     test('playing an empty list is a no-op', () async {
       final p = await makePlayer();
       await p.playTracks([]);
@@ -456,5 +475,26 @@ class _FailingBackend extends FakeAudioBackend {
   Future<void> setSource(String path) async {
     if (path == failFor) throw Exception('cannot decode');
     await super.setSource(path);
+  }
+}
+
+/// Backend whose loads only finish when told to, and that fails an in-flight
+/// load as soon as a newer one starts -- the way just_audio reports an
+/// interrupted `setAudioSource`.
+class _InterruptibleBackend extends FakeAudioBackend {
+  Completer<void>? _pending;
+
+  @override
+  Future<void> setSource(String path) async {
+    _pending?.completeError(Exception('Loading interrupted'));
+    final load = _pending = Completer<void>();
+    await load.future;
+    await super.setSource(path);
+  }
+
+  /// Lets the most recent load complete.
+  void finishLoad() {
+    _pending?.complete();
+    _pending = null;
   }
 }

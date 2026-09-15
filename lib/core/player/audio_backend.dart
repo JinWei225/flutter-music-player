@@ -58,9 +58,13 @@ class JustAudioBackend implements AudioBackend {
   @override
   Stream<Duration?> get durationStream => _player.durationStream;
 
+  // Derived from the processing state alone. playerStateStream pairs it with
+  // `playing`, so pausing (or resuming) while the state is still `completed`
+  // would emit a second, spurious completion for the same track end.
   @override
-  Stream<void> get completions => _player.playerStateStream
-      .where((s) => s.processingState == ProcessingState.completed);
+  Stream<void> get completions => _player.processingStateStream
+      .distinct()
+      .where((s) => s == ProcessingState.completed);
 
   @override
   Stream<void> get stateChanges => _player.playerStateStream;

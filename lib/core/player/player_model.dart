@@ -41,6 +41,11 @@ class PlayerModel extends ChangeNotifier {
 
   double _volume = 0.7;
   bool _disposed = false;
+
+  /// Bumped by every [_loadCurrent]. A load that finds the counter has moved
+  /// on was overtaken by a newer one (the engine aborts the older request), so
+  /// it must not touch the cursor -- the newer load owns it now.
+  int _loadGeneration = 0;
   final List<StreamSubscription<void>> _subscriptions = [];
 
   PlayerModel(this._settings, {AudioBackend? audio, Random? random})
@@ -302,11 +307,19 @@ class PlayerModel extends ChangeNotifier {
   Future<void> _loadCurrent({bool autoPlay = false}) async {
     final track = currentTrack;
     if (track == null) return;
+    final generation = ++_loadGeneration;
     try {
       await _audio.setSource(track.path);
       await _audio.setVolume(_volume);
       if (autoPlay) await _audio.play();
     } catch (e) {
+      // Starting another load while this one was in flight makes the engine
+      // throw here too. That is not a broken file: the newer load has already
+      // moved the cursor, so skipping ahead would jump past the track the
+      // user actually picked (and, with two loads interrupting each other in
+      // turn, several more after it).
+      if (generation != _loadGeneration) return;
+
       debugPrint('Failed to play ${track.path}: $e');
       // A single unreadable file should not strand the queue.
       if (_position + 1 < _order.length) {
