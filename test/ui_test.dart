@@ -378,6 +378,36 @@ void main() {
     expect(settings.volume, closeTo(0.33, 1e-9));
   });
 
+  group('Play Next', () {
+    testWidgets('from the album page queues the track behind the current one',
+        (tester) async {
+      await pumpApp(tester);
+
+      await tester.tap(find.text('Albums'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('AIR - EP').first);
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Play All'));
+      await tester.pumpAndSettle();
+      expect(player.currentTrack?.title, 'Air');
+
+      // Right-click the album's last track.
+      final last = player.queueInPlayOrder.last.title;
+      await tester.tap(find.text(last).first, buttons: kSecondaryButton);
+      await tester.pumpAndSettle();
+      expect(find.text('Play Next'), findsOneWidget);
+      expect(find.text('Edit Info…'), findsOneWidget);
+
+      await tester.tap(find.text('Play Next'));
+      await tester.pumpAndSettle();
+
+      expect(player.queueInPlayOrder[1].title, last);
+      expect(player.pendingPlayNextCount, 1);
+      expect(player.currentTrack?.title, 'Air');
+      expect(find.text('Playing next: $last'), findsOneWidget);
+    });
+  });
+
   group('Edit Info', () {
     testWidgets('right-clicking a row opens the editor pre-filled', (
       tester,
