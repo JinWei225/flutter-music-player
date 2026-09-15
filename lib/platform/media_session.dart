@@ -71,9 +71,16 @@ class MewsicAudioHandler extends BaseAudioHandler with SeekHandler {
 
     if (track != null) {
       final current = mediaItem.value;
-      if (current?.id != track.path || current?.duration != track.duration) {
+      if (current == null || current.id != track.path) {
         mediaItem.add(_toMediaItem(track, artUri: null));
         _resolveArtwork(track);
+      } else if (current.title != track.title ||
+          current.artist != track.artist ||
+          current.album != track.album ||
+          current.duration != track.duration) {
+        // Same file, new tags (Edit Info on the playing track): the cover is
+        // unchanged, so keep whatever art has already been resolved.
+        mediaItem.add(_toMediaItem(track, artUri: current.artUri));
       }
     } else if (mediaItem.value != null) {
       mediaItem.add(null);

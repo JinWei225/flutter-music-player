@@ -69,7 +69,9 @@ class Track {
   /// album called "Air", and they must not merge into one tile.
   String get albumKey => '$album\u0001$effectiveAlbumArtist';
 
-  String get fileName => path.split(Platform.pathSeparator).last;
+  /// The file's own name. On Android [path] is a `content://` URI whose last
+  /// segment is a row id, so the on-disk path is preferred when known.
+  String get fileName => (filePath ?? path).split(Platform.pathSeparator).last;
 
   @override
   bool operator ==(Object other) => other is Track && other.path == path;

@@ -492,6 +492,32 @@ void main() {
       expect(find.text('CAKE'), findsWidgets);
     });
 
+    testWidgets('an unexpected error still hands the sheet back', (
+      tester,
+    ) async {
+      await pumpApp(tester);
+      library = LibraryModel(
+        library.source,
+        writeTags: (_, _) async => throw RangeError('bad atom'),
+      );
+      await tester.runAsync(library.load);
+      await tester.pumpWidget(buildApp());
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.text('CAKE').first, buttons: kSecondaryButton);
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Edit Info…'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Save'));
+      await tester.pumpAndSettle();
+
+      expect(find.textContaining('bad atom'), findsOneWidget);
+      // Not stuck: Cancel works again.
+      await tester.tap(find.text('Cancel'));
+      await tester.pumpAndSettle();
+      expect(find.byType(EditTrackInfoDialog), findsNothing);
+    });
+
     testWidgets('the playing track is renamed in the player bar too', (
       tester,
     ) async {

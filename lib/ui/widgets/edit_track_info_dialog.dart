@@ -91,12 +91,20 @@ class _EditTrackInfoDialogState extends State<EditTrackInfoDialog> {
         SnackBar(content: Text('Saved to ${updated.fileName}')),
       );
     } on TagWriteException catch (e) {
-      if (!mounted) return;
-      setState(() {
-        _saving = false;
-        _error = e.message;
-      });
+      _fail(e.message);
+    } catch (e) {
+      // Anything the writer did not expect (a malformed file, say) must still
+      // hand the dialog back, not leave it spinning with every button disabled.
+      _fail('Could not save: $e');
     }
+  }
+
+  void _fail(String message) {
+    if (!mounted) return;
+    setState(() {
+      _saving = false;
+      _error = message;
+    });
   }
 
   static int? _number(String text) {
