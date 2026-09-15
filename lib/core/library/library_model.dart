@@ -49,11 +49,13 @@ class LibraryModel extends ChangeNotifier {
   SortField get sortField => _sortField;
   SortDirection get sortDirection => _sortDirection;
 
+  /// Sorted lazily and kept until the tracks or the sort change: the All
+  /// Songs page rebuilds on every player notification, and re-sorting a large
+  /// library each time was measurable work for a highlight moving one row.
+  List<Track>? _sorted;
+
   /// All songs in the user's chosen order.
-  List<Track> get sortedTracks {
-    final list = [..._tracks]..sort(_comparator);
-    return list;
-  }
+  List<Track> get sortedTracks => _sorted ??= [..._tracks]..sort(_comparator);
 
   Future<void> load() async {
     _loading = true;
@@ -62,12 +64,14 @@ class LibraryModel extends ChangeNotifier {
     try {
       _tracks = await source.loadTracks();
       _albums = Album.group(_tracks);
+      _sorted = null;
       // Covers may have been added to the files since they were last read.
       ArtworkStore.instance.clear();
     } catch (e) {
       _error = '$e';
       _tracks = const [];
       _albums = const [];
+      _sorted = null;
     } finally {
       _loading = false;
       notifyListeners();
@@ -78,6 +82,7 @@ class LibraryModel extends ChangeNotifier {
     if (_sortField == field && _sortDirection == direction) return;
     _sortField = field;
     _sortDirection = direction;
+    _sorted = null;
     notifyListeners();
   }
 
@@ -119,15 +124,9 @@ class LibraryModel extends ChangeNotifier {
     );
     _tracks = [for (final t in _tracks) t == track ? updated : t];
     _albums = Album.group(_tracks);
+    _sorted = null;
     notifyListeners();
     return updated;
-  }
-
-  Album? albumFor(Track track) {
-    for (final a in _albums) {
-      if (a.key == track.albumKey) return a;
-    }
-    return null;
   }
 
   int _comparator(Track a, Track b) {

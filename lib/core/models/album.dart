@@ -39,7 +39,7 @@ class Album {
       final roots = _artistRoots(entry.value);
       for (final t in entry.value) {
         final artist = roots[t.effectiveAlbumArtist] ?? t.effectiveAlbumArtist;
-        final key = '${entry.key}$artist';
+        final key = '${entry.key}\u0001$artist';
         byKey.putIfAbsent(key, () => <Track>[]).add(t);
         artistForKey[key] = artist;
       }
