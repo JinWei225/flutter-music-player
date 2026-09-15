@@ -3,7 +3,6 @@ import 'dart:io';
 import 'package:custom_music_player/core/library/library_model.dart';
 import 'package:custom_music_player/core/models/album.dart';
 import 'package:custom_music_player/core/player/player_model.dart';
-import 'package:custom_music_player/platform/library_source.dart';
 import 'package:custom_music_player/platform/settings_store.dart';
 import 'package:custom_music_player/ui/pages/all_songs_page.dart';
 import 'package:custom_music_player/ui/shell.dart';
@@ -22,12 +21,19 @@ import 'package:mewsic_tagfix/mewsic_tagfix.dart';
 import 'package:provider/provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
+import 'fixture_library.dart';
 import 'player_test.dart' show FakeAudioBackend;
 
-/// Drives the real UI against the real on-disk library, with only the audio
-/// engine faked out.
+/// Drives the real UI against the fixture library on disk (see
+/// `fixture_library.dart`), with only the audio engine faked out.
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
+
+  final source = fixtureLibrary();
+  if (source == null) {
+    test('UI tests', () {}, skip: fixtureMissingReason);
+    return;
+  }
 
   late FakeAudioBackend audio;
   late PlayerModel player;
@@ -77,7 +83,7 @@ void main() {
       player = PlayerModel(settings, audio: audio);
       written.clear();
       library = LibraryModel(
-        DirectoryLibrarySource.defaultLocation(),
+        source,
         writeTags: (file, edit) async => written.add((file, edit)),
       );
       await library.load();

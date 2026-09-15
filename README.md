@@ -281,11 +281,18 @@ volume persistence, the Edit Info sheet, and both the desktop and phone
 layouts; tag parsing and writing are tested in the mewsic-tagfix package.
 
 Most tests build their own fixtures, but `test/metadata_test.dart` and
-`test/ui_test.dart` read the real music folders and assert against the
-specific library they were written for (11 tracks, two albums). **They will
-fail on a fresh clone with a different library** — that is expected; the rest
-of the suite is self-contained. `MEWSIC_MUSIC_DIR` points them at a fixture
-library if you have one.
+`test/ui_test.dart` read a real library from disk: 17 store-bought AAC
+tracks across three albums, which are not in the repository. They skip
+themselves until that library is in place, so a fresh clone still gets a
+green run from the rest of the suite. On a machine with those albums in
+Apple Music, copy them in once:
+
+```bash
+test/fixtures/sync.sh
+```
+
+That fills `test/fixtures/library` (gitignored). `MEWSIC_TEST_LIBRARY`
+points the tests at a copy kept somewhere else.
 
 `packaging/make_icons.py` generates every icon from the same Material glyph
 the app shows in its sidebar, so the launcher, notification and in-app marks

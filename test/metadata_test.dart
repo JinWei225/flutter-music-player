@@ -4,15 +4,20 @@ import 'package:custom_music_player/core/library/library_model.dart';
 import 'package:custom_music_player/core/metadata/track_reader.dart';
 import 'package:custom_music_player/core/models/album.dart';
 import 'package:custom_music_player/core/models/track.dart';
-import 'package:custom_music_player/platform/library_source.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:mewsic_tagfix/mewsic_tagfix.dart';
 
-/// These run against the real iTunes files in the platform's own music
-/// folders. They are the check that tag reading works on actual store-bought
-/// AAC, not just synthetic fixtures.
+import 'fixture_library.dart';
+
+/// These run against real iTunes purchases (see `fixture_library.dart`).
+/// They are the check that tag reading works on actual store-bought AAC, not
+/// just synthetic fixtures.
 void main() {
-  final source = DirectoryLibrarySource.defaultLocation();
+  final source = fixtureLibrary();
+  if (source == null) {
+    test('metadata tests', () {}, skip: fixtureMissingReason);
+    return;
+  }
 
   group('iTunes m4a metadata', () {
     late List<Track> tracks;
