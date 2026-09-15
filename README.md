@@ -16,6 +16,10 @@ macOS and Windows targets in the tree.
   (list / one / off), queue, and a volume slider.
 - **Volume persists** across restarts. Repeat defaults to *list*, and starting
   playback never leaves repeat off.
+- **Play Next** on any track (right-click, long-press, or the hover menu, in
+  the library or the queue itself) moves it to just after the current song.
+  Picking a second track queues it *behind* the first, so a run of picks
+  plays in the order you chose them.
 - **Space** toggles play/pause on desktop.
 - **Edit Info** on any track (right-click, long-press, or the hover menu)
   writes corrected tags back into the file itself, so the fix follows the
@@ -117,8 +121,9 @@ adb install -r build/app/outputs/flutter-apk/app-release.apk
 ```
 
 The app asks for audio access on first launch; without it the library reads
-as empty. Note that the release build is signed with Flutter's debug keys —
-fine for your own devices, not for distribution.
+as empty. Without a release keystore (see [Releases](#releases)) the build is
+signed with Flutter's debug key — fine for your own devices, not for
+distribution.
 
 ### macOS
 
@@ -175,6 +180,61 @@ The output is `build\windows\x64\runner\Release\`, containing `Mewsic.exe`
 alongside its DLLs and a `data` folder. There is no installer: copy that whole
 folder somewhere such as `C:\Program Files\Mewsic` and make a shortcut to the
 executable. Keep the folder together — the executable will not run on its own.
+
+## Releases
+
+Rebuilding on a laptop for every change gets old. Pushing a version tag has
+GitHub Actions build the Android APK and the Linux bundle and attach both to
+a GitHub Release (`.github/workflows/release.yml`):
+
+```bash
+git tag v1.1.0 && git push origin v1.1.0
+```
+
+A few minutes later the release page has `Mewsic-android.apk` and
+`Mewsic-linux-x64.tar.gz`. The workflow can also be started from the Actions
+tab without a tag; that produces the same files as run artifacts, without a
+release.
+
+**Android.** Install [Obtainium](https://github.com/ImranR98/Obtainium) on
+the phone and add `https://github.com/JinWei225/flutter-music-player` as an
+app: it watches the releases and installs each new APK with one tap, no
+laptop or cable involved. Or just open the release page in the phone's
+browser and download the APK.
+
+Android only lets an APK update an installed app when both are signed with
+the same key, and the CI runner's debug key is not your laptop's. So make a
+release key once and give it to the workflow:
+
+```bash
+keytool -genkeypair -v -keystore ~/mewsic-release.keystore -alias mewsic         -keyalg RSA -keysize 2048 -validity 10000
+```
+
+Then in the repository's *Settings → Secrets and variables → Actions* add:
+
+| Secret | Value |
+| --- | --- |
+| `ANDROID_KEYSTORE_BASE64` | `base64 -w0 ~/mewsic-release.keystore` |
+| `ANDROID_KEYSTORE_PASSWORD` | the store password you chose |
+| `ANDROID_KEY_ALIAS` | `mewsic` |
+| `ANDROID_KEY_PASSWORD` | the key password (same as the store password unless you set one) |
+
+The first release-signed APK has to be installed over an *uninstalled* app
+(the debug-signed one has a different key); after that every release updates
+in place. To sign local builds with the same key, put the keystore path and
+passwords in `android/key.properties` (gitignored; the four `storeFile`,
+`storePassword`, `keyAlias`, `keyPassword` entries) — `flutter build apk`
+picks it up automatically. Keep the keystore somewhere safe: lose it and the
+next release cannot update existing installs.
+
+**Linux.** With a checkout of the repo but no Flutter toolchain:
+
+```bash
+./packaging/install.sh --latest
+```
+
+downloads the bundle from the latest release and installs it exactly as the
+build-from-source path does.
 
 ## What is platform-specific
 

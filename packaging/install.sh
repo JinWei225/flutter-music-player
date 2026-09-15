@@ -3,7 +3,12 @@
 # current user, so it shows up in the GNOME Activities search.
 #
 #   ./packaging/install.sh            build + install
+#   ./packaging/install.sh --latest   download the latest GitHub release + install
 #   ./packaging/install.sh --uninstall
+#
+# --latest skips the Flutter toolchain entirely: it fetches the bundle the
+# Release workflow built (see .github/workflows/release.yml), so a laptop
+# that only runs the app never has to compile it.
 #
 # Everything lands under ~/.local, so no root is needed.
 set -euo pipefail
@@ -11,6 +16,7 @@ set -euo pipefail
 APP_ID=com.jinwei.custom_music_player
 APP_NAME=Mewsic
 PROJECT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+RELEASE_URL=https://github.com/JinWei225/flutter-music-player/releases/latest/download/Mewsic-linux-x64.tar.gz
 
 PREFIX="$HOME/.local"
 INSTALL_DIR="$PREFIX/opt/$APP_ID"
@@ -35,16 +41,24 @@ if [[ "${1:-}" == "--uninstall" ]]; then
   exit 0
 fi
 
-# --- build ---------------------------------------------------------------
-if ! command -v flutter >/dev/null 2>&1; then
-  export PATH="$HOME/dev/flutter/bin:$PATH"
+# --- build, or download -------------------------------------------------
+if [[ "${1:-}" == "--latest" ]]; then
+  TMP="$(mktemp -d)"
+  trap 'rm -rf "$TMP"' EXIT
+  echo "Downloading the latest release..."
+  curl -fsSL --retry 3 -o "$TMP/bundle.tar.gz" "$RELEASE_URL"
+  tar -C "$TMP" -xzf "$TMP/bundle.tar.gz"
+  BUNDLE="$TMP/bundle"
+else
+  if ! command -v flutter >/dev/null 2>&1; then
+    export PATH="$HOME/dev/flutter/bin:$PATH"
+  fi
+  echo "Building release bundle..."
+  cd "$PROJECT"
+  flutter build linux --release
+  BUNDLE="$PROJECT/build/linux/x64/release/bundle"
 fi
-echo "Building release bundle..."
-cd "$PROJECT"
-flutter build linux --release
-
-BUNDLE="$PROJECT/build/linux/x64/release/bundle"
-[[ -x "$BUNDLE/Mewsic" ]] || { echo "Build produced no binary"; exit 1; }
+[[ -x "$BUNDLE/Mewsic" ]] || { echo "No Mewsic binary in $BUNDLE"; exit 1; }
 
 # --- install the bundle --------------------------------------------------
 # The executable needs its sibling lib/ and data/ directories, so the whole

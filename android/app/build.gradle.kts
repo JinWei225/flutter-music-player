@@ -1,8 +1,20 @@
+import java.util.Properties
+
 plugins {
     id("com.android.application")
     // The Flutter Gradle Plugin must be applied after the Android and Kotlin Gradle plugins.
     id("dev.flutter.flutter-gradle-plugin")
 }
+
+// A release keystore, when one is set up (see "Releases" in the README).
+// android/key.properties is gitignored; the CI workflow writes it from the
+// repository secrets. Without it the release build falls back to the debug
+// key so that `flutter run --release` keeps working on a fresh checkout.
+val keystoreProperties = Properties().apply {
+    val file = rootProject.file("key.properties")
+    if (file.exists()) file.inputStream().use { load(it) }
+}
+val hasReleaseKey = keystoreProperties.containsKey("storeFile")
 
 android {
     namespace = "com.jinwei.custom_music_player"
@@ -29,11 +41,24 @@ android {
         versionName = flutter.versionName
     }
 
+    signingConfigs {
+        if (hasReleaseKey) {
+            create("release") {
+                storeFile = rootProject.file(keystoreProperties["storeFile"] as String)
+                storePassword = keystoreProperties["storePassword"] as String
+                keyAlias = keystoreProperties["keyAlias"] as String
+                keyPassword = keystoreProperties["keyPassword"] as String
+            }
+        }
+    }
+
     buildTypes {
         release {
-            // TODO: Add your own signing config for the release build.
-            // Signing with the debug keys for now, so `flutter run --release` works.
-            signingConfig = signingConfigs.getByName("debug")
+            signingConfig = if (hasReleaseKey) {
+                signingConfigs.getByName("release")
+            } else {
+                signingConfigs.getByName("debug")
+            }
         }
     }
 }
