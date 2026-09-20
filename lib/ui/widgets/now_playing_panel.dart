@@ -5,7 +5,6 @@ import '../../core/models/track.dart';
 import '../../core/player/player_model.dart';
 import 'album_art.dart';
 import 'player/queue_list.dart';
-import 'player/seek_bar.dart';
 
 /// Now Playing for wide layouts: the current track's art and position on top,
 /// the queue in playback order underneath. Docked beside the library on
@@ -163,8 +162,6 @@ class _Hero extends StatelessWidget {
             overflow: TextOverflow.ellipsis,
             style: TextStyle(fontSize: 12.5, color: scheme.onSurfaceVariant),
           ),
-          const SizedBox(height: 6),
-          const SeekBar(dense: true),
         ],
       ),
     );
