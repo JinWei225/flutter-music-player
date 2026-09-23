@@ -245,6 +245,10 @@ class _SortControl extends StatelessWidget {
       tooltip: 'Sort: ${field.label} ${_rangeFor(direction)}',
       initialValue: (field, direction),
       onSelected: (choice) => library.setSort(choice.$1, choice.$2),
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(18),
+        side: BorderSide(color: scheme.outline),
+      ),
       itemBuilder: (context) => [
         for (final f in SortField.values) ...[
           if (f != SortField.values.first) const PopupMenuDivider(),
@@ -262,10 +266,10 @@ class _SortControl extends StatelessWidget {
         ],
       ],
       child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
         decoration: BoxDecoration(
           border: Border.all(color: scheme.outline),
-          borderRadius: BorderRadius.circular(6),
+          borderRadius: BorderRadius.circular(20),
         ),
         child: Row(
           mainAxisSize: MainAxisSize.min,
