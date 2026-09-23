@@ -249,6 +249,9 @@ class _SortControl extends StatelessWidget {
         borderRadius: BorderRadius.circular(18),
         side: BorderSide(color: scheme.outline),
       ),
+      // PopupMenuButton defaults clipBehavior to Clip.none, so without this
+      // the menu's shadow and item highlights spill past the rounded shape.
+      clipBehavior: Clip.antiAlias,
       itemBuilder: (context) => [
         for (final f in SortField.values) ...[
           if (f != SortField.values.first) const PopupMenuDivider(),
