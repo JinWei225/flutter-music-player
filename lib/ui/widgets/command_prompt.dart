@@ -30,7 +30,11 @@ void runCommand(BuildContext context, CommandVerb verb, CommandMatch match) {
   final player = context.read<PlayerModel>();
   switch (verb) {
     case CommandVerb.play:
-      player.playTracks(match.tracks, startIndex: match.startIndex, shuffle: false);
+      player.playTracks(
+        match.tracks,
+        startIndex: match.startIndex,
+        shuffle: false,
+      );
     case CommandVerb.shuffle:
       player.playTracks(match.tracks, shuffle: true);
     case CommandVerb.next:
@@ -463,11 +467,20 @@ class CommandResults extends StatelessWidget {
             TextSpan(
               style: TextStyle(fontSize: 12, color: c.textDim),
               children: [
-                TextSpan(text: '↑↓', style: TextStyle(color: c.key)),
+                TextSpan(
+                  text: '↑↓',
+                  style: TextStyle(color: c.key),
+                ),
                 const TextSpan(text: ' select   '),
-                TextSpan(text: 'enter', style: TextStyle(color: c.key)),
+                TextSpan(
+                  text: 'enter',
+                  style: TextStyle(color: c.key),
+                ),
                 TextSpan(text: ' ${_verbLabel(command.verb)}   '),
-                TextSpan(text: 'esc', style: TextStyle(color: c.key)),
+                TextSpan(
+                  text: 'esc',
+                  style: TextStyle(color: c.key),
+                ),
                 const TextSpan(text: ' close'),
               ],
             ),
@@ -484,7 +497,10 @@ class CommandResults extends StatelessWidget {
     return Material(
       color: c.surfaceRaised,
       shape: RoundedRectangleBorder(side: BorderSide(color: c.accent)),
-      child: Padding(padding: const EdgeInsets.symmetric(vertical: 4), child: list),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(vertical: 4),
+        child: list,
+      ),
     );
   }
 }
@@ -517,6 +533,45 @@ class _ResultRow extends StatelessWidget {
     }
   }
 
+  TextStyle _labelStyle(TerminalColors c) => TextStyle(
+    color: selected ? c.accent : c.text,
+    fontWeight: FontWeight.w700,
+  );
+
+  /// `NA  — NAYEON · 7 songs` on one line.
+  Widget _inline(TerminalColors c) => Text.rich(
+    TextSpan(
+      children: [
+        TextSpan(text: match.label, style: _labelStyle(c)),
+        TextSpan(
+          text: '  ${_detail()}',
+          style: TextStyle(color: c.textDim),
+        ),
+      ],
+    ),
+    maxLines: 1,
+    overflow: TextOverflow.ellipsis,
+  );
+
+  /// The name over `NAYEON · 7 songs`.
+  Widget _stacked(TerminalColors c) => Column(
+    crossAxisAlignment: CrossAxisAlignment.start,
+    children: [
+      Text(
+        match.label,
+        maxLines: 1,
+        overflow: TextOverflow.ellipsis,
+        style: _labelStyle(c),
+      ),
+      Text(
+        _detail().replaceFirst('— ', ''),
+        maxLines: 1,
+        overflow: TextOverflow.ellipsis,
+        style: TextStyle(fontSize: 12, color: c.textDim),
+      ),
+    ],
+  );
+
   @override
   Widget build(BuildContext context) {
     final c = TerminalColors.of(context);
@@ -524,13 +579,20 @@ class _ResultRow extends StatelessWidget {
         ? match.tracks[match.startIndex].duration
         : match.totalDuration;
 
+    // A phone row is too narrow for name and detail on one line, so the
+    // detail moves underneath, as it does in the phone's track list.
+    final twoLine = height >= 44;
+
     return Material(
       color: selected ? c.selection : Colors.transparent,
       child: InkWell(
         onTap: onTap,
         child: Container(
           constraints: BoxConstraints(minHeight: height),
-          padding: const EdgeInsets.symmetric(horizontal: 12),
+          padding: EdgeInsets.symmetric(
+            horizontal: 12,
+            vertical: twoLine ? 5 : 0,
+          ),
           child: Row(
             children: [
               SizedBox(
@@ -547,27 +609,7 @@ class _ResultRow extends StatelessWidget {
                   style: TextStyle(fontSize: 12, color: c.textDim),
                 ),
               ),
-              Expanded(
-                child: Text.rich(
-                  TextSpan(
-                    children: [
-                      TextSpan(
-                        text: match.label,
-                        style: TextStyle(
-                          color: selected ? c.accent : c.text,
-                          fontWeight: FontWeight.w700,
-                        ),
-                      ),
-                      TextSpan(
-                        text: '  ${_detail()}',
-                        style: TextStyle(color: c.textDim),
-                      ),
-                    ],
-                  ),
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                ),
-              ),
+              Expanded(child: twoLine ? _stacked(c) : _inline(c)),
               const SizedBox(width: 12),
               Text(formatDuration(time), style: TextStyle(color: c.textDim)),
             ],
