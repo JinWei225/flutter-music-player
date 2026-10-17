@@ -371,20 +371,22 @@ class _StatusLine extends StatelessWidget {
               ),
             ),
             const SizedBox(width: 18),
-            Expanded(
-              child: Text.rich(
-                TextSpan(
-                  children: [
-                    setting('repeat', repeat),
-                    gap,
-                    setting('shuffle', player.shuffle ? 'on' : 'off'),
-                  ],
-                ),
+            Text.rich(
+              TextSpan(
+                children: [
+                  setting('repeat', repeat),
+                  gap,
+                  setting('shuffle', player.shuffle ? 'on' : 'off'),
+                ],
               ),
             ),
             const SizedBox(width: 18),
-            // Key hints are the first thing to go when space runs out.
-            Flexible(
+            // The only flex child, so it takes all the slack and the hints
+            // sit against the right edge at any width. (Pairing it with
+            // another flex child split the slack between the two, leaving
+            // the hints adrift mid-line.) They are also the first thing to
+            // ellipsise when space runs out.
+            Expanded(
               child: Text.rich(
                 TextSpan(
                   children: [

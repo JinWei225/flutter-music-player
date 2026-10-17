@@ -368,6 +368,19 @@ void main() {
     expect(settings.darkMode, isFalse);
   });
 
+  testWidgets('the status line key hints stay at the right edge', (
+    tester,
+  ) async {
+    // They used to share the line's slack with the settings text, which
+    // left them stranded mid-line on a wide window.
+    for (final width in [1600.0, 1100.0]) {
+      await pumpApp(tester, size: Size(width, 900));
+      final hints = find.textContaining('play/pause');
+      expect(tester.getRect(hints).right, width - 16);
+      expect(tester.widget<Text>(hints).textAlign, TextAlign.right);
+    }
+  });
+
   testWidgets('the volume slider persists its value', (tester) async {
     await pumpApp(tester);
 
