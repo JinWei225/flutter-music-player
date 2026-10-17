@@ -1,4 +1,4 @@
-import 'package:flutter/material.dart';
+import 'package:flutter/material.dart' hide RepeatMode;
 import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 
@@ -13,6 +13,8 @@ import 'theme.dart';
 import 'widgets/mini_player.dart';
 import 'widgets/now_playing_panel.dart';
 import 'widgets/player_bar.dart';
+import 'widgets/terminal_panel.dart';
+import 'widgets/terminal_widgets.dart';
 
 enum _Section { allSongs, albums }
 
@@ -100,60 +102,94 @@ class _AppShellState extends State<AppShell> {
   // --- desktop / tablet -----------------------------------------------------
 
   Widget _buildWide(BuildContext context, double width) {
-    final scheme = Theme.of(context).colorScheme;
     final player = context.watch<PlayerModel>();
     final medium = width < kMediumBreakpoint;
     final open = _nowPlayingOpen(width, player);
+    final album = _section == _Section.albums ? _currentOpenAlbum() : null;
 
-    final body = Container(
-      color: Theme.of(context).scaffoldBackgroundColor,
+    // Panels sit 16 apart; a panel's label rides up into the gap above it,
+    // so vertical gaps are measured to the border, not the widget's top.
+    const gap = 16.0;
+    const vGap = gap - TerminalPanel.labelInset;
+
+    final main = TerminalPanel(
+      title: switch (_section) {
+        _Section.allSongs => 'all songs',
+        _Section.albums when album != null =>
+          'albums / ${album.name.toLowerCase()}',
+        _Section.albums => 'albums',
+      },
+      highlighted: true,
       child: _buildBody(),
+    );
+
+    final panels = Row(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        _Sidebar(section: _section, onSelect: _select, compact: medium),
+        const SizedBox(width: gap),
+        Expanded(child: main),
+        if (!medium && open) ...[
+          const SizedBox(width: gap),
+          NowPlayingPanel(width: _kPanelWidthWide, onClose: _closeNowPlaying),
+        ],
+      ],
     );
 
     return Scaffold(
       body: SafeArea(
         child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
+            Padding(
+              padding: const EdgeInsets.fromLTRB(gap, 14, gap, 0),
+              child: _HeaderLine(path: _path(album)),
+            ),
+            const SizedBox(height: vGap),
             Expanded(
-              child: Row(
-                children: [
-                  _Sidebar(
-                    section: _section,
-                    onSelect: _select,
-                    compact: medium,
-                  ),
-                  Expanded(
-                    child: medium
-                        ? _SlideOver(
-                            open: open,
-                            onDismiss: _closeNowPlaying,
-                            panel: NowPlayingPanel(
-                              width: _kPanelWidthMedium,
-                              elevated: true,
-                              onClose: _closeNowPlaying,
-                            ),
-                            child: body,
-                          )
-                        : body,
-                  ),
-                  if (!medium && open)
-                    NowPlayingPanel(
-                      width: _kPanelWidthWide,
-                      onClose: _closeNowPlaying,
+              child: medium
+                  ? _SlideOver(
+                      open: open,
+                      onDismiss: _closeNowPlaying,
+                      panel: NowPlayingPanel(
+                        width: _kPanelWidthMedium,
+                        onClose: _closeNowPlaying,
+                      ),
+                      child: Padding(
+                        padding: const EdgeInsets.symmetric(horizontal: gap),
+                        child: panels,
+                      ),
+                    )
+                  : Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: gap),
+                      child: panels,
                     ),
-                ],
+            ),
+            const SizedBox(height: vGap),
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: gap),
+              child: PlayerBar(
+                nowPlayingOpen: open,
+                onToggleNowPlaying: () => _toggleNowPlaying(width),
               ),
             ),
-            Divider(height: 1, color: scheme.outline),
-            PlayerBar(
-              nowPlayingOpen: open,
-              onToggleNowPlaying: () => _toggleNowPlaying(width),
+            const Padding(
+              padding: EdgeInsets.fromLTRB(gap, 8, gap, 10),
+              child: _StatusLine(),
             ),
           ],
         ),
       ),
     );
   }
+
+  /// The breadcrumb in the header line, as if the library were a folder.
+  String _path(Album? album) => switch (_section) {
+    _Section.allSongs => '~/Music',
+    _Section.albums when album != null =>
+      '~/Music/albums/${pathSlug(album.name)}',
+    _Section.albums => '~/Music/albums',
+  };
 
   // --- phone ----------------------------------------------------------------
 
@@ -164,24 +200,7 @@ class _AppShellState extends State<AppShell> {
         mainAxisSize: MainAxisSize.min,
         children: [
           const MiniPlayer(),
-          NavigationBar(
-            height: 62,
-            selectedIndex: _section == _Section.allSongs ? 0 : 1,
-            onDestinationSelected: (i) =>
-                _select(i == 0 ? _Section.allSongs : _Section.albums),
-            destinations: const [
-              NavigationDestination(
-                icon: Icon(Icons.library_music_outlined),
-                selectedIcon: Icon(Icons.library_music_rounded),
-                label: 'All Songs',
-              ),
-              NavigationDestination(
-                icon: Icon(Icons.album_outlined),
-                selectedIcon: Icon(Icons.album_rounded),
-                label: 'Albums',
-              ),
-            ],
-          ),
+          _PhoneTabs(section: _section, onSelect: _select),
         ],
       ),
     );
@@ -232,6 +251,7 @@ class _SlideOver extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final c = TerminalColors.of(context);
     return PopScope(
       // The Android back gesture closes the panel before it leaves the app.
       canPop: !open,
@@ -249,7 +269,7 @@ class _SlideOver extends StatelessWidget {
               duration: _duration,
               child: GestureDetector(
                 onTap: onDismiss,
-                child: Container(color: Colors.black.withValues(alpha: 0.45)),
+                child: Container(color: c.background.withValues(alpha: 0.7)),
               ),
             ),
           ),
@@ -258,10 +278,128 @@ class _SlideOver extends StatelessWidget {
             curve: Curves.easeOutCubic,
             top: 0,
             bottom: 0,
-            right: open ? 0 : -_kPanelWidthMedium,
+            // Lines up with the window's outer padding when open.
+            right: open ? 16 : -_kPanelWidthMedium,
             child: panel,
           ),
         ],
+      ),
+    );
+  }
+}
+
+/// `mewsic ~/Music/albums            17 songs · 3 albums`
+class _HeaderLine extends StatelessWidget {
+  final String path;
+
+  const _HeaderLine({required this.path});
+
+  @override
+  Widget build(BuildContext context) {
+    final c = TerminalColors.of(context);
+    final library = context.watch<LibraryModel>();
+    return DefaultTextStyle.merge(
+      style: TextStyle(color: c.textDim),
+      child: Row(
+        children: [
+          Text(
+            'mewsic',
+            style: TextStyle(color: c.accent, fontWeight: FontWeight.w700),
+          ),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Text(path, maxLines: 1, overflow: TextOverflow.ellipsis),
+          ),
+          const SizedBox(width: 10),
+          Text(
+            '${library.trackCount} songs · ${library.albums.length} albums',
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+/// `PLAYING  repeat list  shuffle off       space play/pause  right-click …`
+class _StatusLine extends StatelessWidget {
+  const _StatusLine();
+
+  @override
+  Widget build(BuildContext context) {
+    final c = TerminalColors.of(context);
+    final player = context.watch<PlayerModel>();
+
+    final (badge, badgeColor) = player.isPlaying
+        ? ('PLAYING', c.ok)
+        : player.hasTrack
+        ? ('PAUSED', c.accent)
+        : ('STOPPED', c.textDim);
+    final repeat = switch (player.repeat) {
+      RepeatMode.off => 'off',
+      RepeatMode.all => 'list',
+      RepeatMode.one => 'one',
+    };
+
+    TextSpan setting(String name, String value) => TextSpan(
+      text: '$name ',
+      children: [TextSpan(text: value, style: TextStyle(color: c.text))],
+    );
+    TextSpan hint(String key, String action) => TextSpan(
+      children: [
+        TextSpan(text: key, style: TextStyle(color: c.key)),
+        TextSpan(text: ' $action'),
+      ],
+    );
+    const gap = TextSpan(text: '   ');
+
+    return DefaultTextStyle.merge(
+      style: TextStyle(fontSize: 12, color: c.textDim),
+      maxLines: 1,
+      overflow: TextOverflow.ellipsis,
+      child: LayoutBuilder(
+        builder: (context, constraints) => Row(
+          children: [
+            Container(
+              color: badgeColor,
+              padding: const EdgeInsets.symmetric(horizontal: 8),
+              child: Text(
+                badge,
+                style: TextStyle(
+                  color: c.background,
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
+            ),
+            const SizedBox(width: 18),
+            Expanded(
+              child: Text.rich(
+                TextSpan(
+                  children: [
+                    setting('repeat', repeat),
+                    gap,
+                    setting('shuffle', player.shuffle ? 'on' : 'off'),
+                  ],
+                ),
+              ),
+            ),
+            const SizedBox(width: 18),
+            // Key hints are the first thing to go when space runs out.
+            Flexible(
+              child: Text.rich(
+                TextSpan(
+                  children: [
+                    hint('space', 'play/pause'),
+                    if (constraints.maxWidth >= 720) ...[
+                      gap,
+                      hint('right-click', 'track menu'),
+                    ],
+                  ],
+                ),
+                textAlign: TextAlign.right,
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }
@@ -282,95 +420,66 @@ class _Sidebar extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final scheme = Theme.of(context).colorScheme;
-    final surfaces = AppSurfaces.of(context);
+    final c = TerminalColors.of(context);
     final library = context.watch<LibraryModel>();
     final themeController = context.watch<ThemeController>();
-
-    final themeIcon = Icon(
-      themeController.isDark
-          ? Icons.light_mode_rounded
-          : Icons.dark_mode_rounded,
-      size: 17,
-    );
     final themeLabel = themeController.isDark ? 'Light mode' : 'Dark mode';
 
-    return Container(
-      width: compact ? 72 : 216,
-      decoration: BoxDecoration(
-        color: surfaces.sidebar,
-        border: Border(right: BorderSide(color: scheme.outline)),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          Padding(
-            padding: compact
-                ? const EdgeInsets.fromLTRB(0, 22, 0, 16)
-                : const EdgeInsets.fromLTRB(20, 22, 20, 20),
-            child: Row(
-              mainAxisAlignment: compact
-                  ? MainAxisAlignment.center
-                  : MainAxisAlignment.start,
-              children: [
-                Icon(Icons.graphic_eq_rounded, color: scheme.primary, size: 22),
-                if (!compact) ...[
-                  const SizedBox(width: 10),
-                  Text(
-                    'Mewsic',
-                    style: TextStyle(
-                      fontSize: 17,
-                      fontWeight: FontWeight.w700,
-                      color: scheme.onSurface,
-                    ),
-                  ),
-                ],
-              ],
+    return SizedBox(
+      width: compact ? 72 : 200,
+      child: TerminalPanel(
+        title: compact ? null : 'library',
+        padding: const EdgeInsets.fromLTRB(8, 9, 8, 8),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            _NavItem(
+              icon: Icons.library_music_sharp,
+              label: 'All Songs',
+              count: library.trackCount,
+              selected: section == _Section.allSongs,
+              compact: compact,
+              onTap: () => onSelect(_Section.allSongs),
             ),
-          ),
-          _NavItem(
-            icon: Icons.library_music_rounded,
-            label: 'All Songs',
-            count: library.trackCount,
-            selected: section == _Section.allSongs,
-            compact: compact,
-            onTap: () => onSelect(_Section.allSongs),
-          ),
-          _NavItem(
-            icon: Icons.album_rounded,
-            label: 'Albums',
-            count: library.albums.length,
-            selected: section == _Section.albums,
-            compact: compact,
-            onTap: () => onSelect(_Section.albums),
-          ),
-          const Spacer(),
-          if (compact)
-            Padding(
-              padding: const EdgeInsets.only(bottom: 12),
-              child: IconButton(
+            const SizedBox(height: 2),
+            _NavItem(
+              icon: Icons.album_sharp,
+              label: 'Albums',
+              count: library.albums.length,
+              selected: section == _Section.albums,
+              compact: compact,
+              onTap: () => onSelect(_Section.albums),
+            ),
+            const Spacer(),
+            if (compact)
+              IconButton(
                 onPressed: themeController.toggle,
-                icon: themeIcon,
+                icon: const ThemeGlyph(size: 18),
                 tooltip: themeLabel,
-                color: scheme.onSurfaceVariant,
-              ),
-            )
-          else
-            Padding(
-              padding: const EdgeInsets.fromLTRB(12, 0, 12, 12),
-              child: TextButton.icon(
-                onPressed: themeController.toggle,
-                icon: themeIcon,
-                label: Text(themeLabel),
-                style: TextButton.styleFrom(
-                  alignment: Alignment.centerLeft,
-                  foregroundColor: scheme.onSurfaceVariant,
-                  padding: const EdgeInsets.symmetric(horizontal: 12),
-                  minimumSize: const Size.fromHeight(38),
+                color: c.textDim,
+              )
+            else
+              InkWell(
+                onTap: themeController.toggle,
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 10,
+                    vertical: 8,
+                  ),
+                  child: Row(
+                    children: [
+                      ThemeGlyph(color: c.textDim),
+                      const SizedBox(width: 8),
+                      Text(
+                        themeLabel.toLowerCase(),
+                        style: TextStyle(color: c.textDim),
+                      ),
+                    ],
+                  ),
                 ),
               ),
-            ),
-        ],
+          ],
+        ),
       ),
     );
   }
@@ -378,6 +487,8 @@ class _Sidebar extends StatelessWidget {
 
 class _NavItem extends StatelessWidget {
   final IconData icon;
+
+  /// Title case; shown lowercase, and kept as is for the rail's tooltip.
   final String label;
   final int count;
   final bool selected;
@@ -395,25 +506,21 @@ class _NavItem extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final scheme = Theme.of(context).colorScheme;
-    final surfaces = AppSurfaces.of(context);
-    final color = selected ? scheme.primary : scheme.onSurfaceVariant;
+    final c = TerminalColors.of(context);
 
     if (compact) {
-      return Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 2),
-        child: Material(
-          color: selected ? scheme.primary.withValues(alpha: 0.12) : null,
-          borderRadius: BorderRadius.circular(7),
-          child: InkWell(
-            onTap: onTap,
-            borderRadius: BorderRadius.circular(7),
-            hoverColor: surfaces.hover,
-            child: Tooltip(
-              message: label,
-              child: SizedBox(
-                height: 44,
-                child: Icon(icon, size: 20, color: color),
+      return Material(
+        color: selected ? c.selection : Colors.transparent,
+        child: InkWell(
+          onTap: onTap,
+          child: Tooltip(
+            message: label,
+            child: SizedBox(
+              height: 44,
+              child: Icon(
+                icon,
+                size: 20,
+                color: selected ? c.accent : c.text2,
               ),
             ),
           ),
@@ -421,41 +528,92 @@ class _NavItem extends StatelessWidget {
       );
     }
 
-    return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 2),
-      child: Material(
-        color: selected ? scheme.primary.withValues(alpha: 0.12) : null,
-        borderRadius: BorderRadius.circular(7),
-        child: InkWell(
-          onTap: onTap,
-          borderRadius: BorderRadius.circular(7),
-          hoverColor: surfaces.hover,
-          child: Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+    return Material(
+      color: selected ? c.selection : Colors.transparent,
+      child: InkWell(
+        onTap: onTap,
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+          child: DefaultTextStyle.merge(
+            style: TextStyle(color: selected ? c.accent : c.text2),
             child: Row(
               children: [
-                Icon(icon, size: 18, color: color),
-                const SizedBox(width: 12),
+                // Two cells either way, so the labels line up.
+                Text(selected ? '▸ ' : '  '),
                 Expanded(
                   child: Text(
-                    label,
-                    style: TextStyle(
-                      fontSize: 13.5,
-                      fontWeight: selected ? FontWeight.w600 : FontWeight.w500,
-                      color: selected ? scheme.onSurface : color,
-                    ),
+                    label.toLowerCase(),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
                   ),
                 ),
                 Text(
                   '$count',
-                  style: TextStyle(
-                    fontSize: 11.5,
-                    color: scheme.onSurfaceVariant.withValues(alpha: 0.8),
-                  ),
+                  style: TextStyle(color: selected ? c.accent : c.textDim),
                 ),
               ],
             ),
           ),
+        ),
+      ),
+    );
+  }
+}
+
+/// The phone's two section tabs, `songs` / `albums`, in place of a Material
+/// navigation bar.
+class _PhoneTabs extends StatelessWidget {
+  final _Section section;
+  final ValueChanged<_Section> onSelect;
+
+  const _PhoneTabs({required this.section, required this.onSelect});
+
+  @override
+  Widget build(BuildContext context) {
+    final c = TerminalColors.of(context);
+
+    Widget tab(String label, _Section target) {
+      final selected = section == target;
+      return Expanded(
+        child: Semantics(
+          selected: selected,
+          button: true,
+          child: Material(
+            color: selected ? c.selection : Colors.transparent,
+            child: InkWell(
+              onTap: () => onSelect(target),
+              child: SizedBox(
+                height: 44,
+                child: Center(
+                  child: Text(
+                    label,
+                    style: TextStyle(
+                      color: selected ? c.accent : c.textDim,
+                      fontWeight: selected ? FontWeight.w700 : FontWeight.w400,
+                    ),
+                  ),
+                ),
+              ),
+            ),
+          ),
+        ),
+      );
+    }
+
+    return Container(
+      decoration: BoxDecoration(
+        color: c.background,
+        border: Border(top: BorderSide(color: c.border)),
+      ),
+      padding: const EdgeInsets.fromLTRB(12, 8, 12, 8),
+      child: SafeArea(
+        top: false,
+        child: Row(
+          children: [
+            tab('songs', _Section.allSongs),
+            const SizedBox(width: 8),
+            tab('albums', _Section.albums),
+          ],
         ),
       ),
     );

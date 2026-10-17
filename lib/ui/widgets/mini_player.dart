@@ -2,84 +2,96 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
 import '../../core/player/player_model.dart';
+import '../theme.dart';
 import 'album_art.dart';
 import 'now_playing_sheet.dart';
+import 'player/transport_buttons.dart';
+import 'terminal_widgets.dart';
 
-/// Compact-layout player strip. Only what fits on a phone; tapping it opens
-/// [NowPlayingSheet] with the full control set.
+/// Compact-layout player strip: a progress line along the top edge, then the
+/// track and pause/next. Tapping it opens [NowPlayingSheet] with the full
+/// control set.
 class MiniPlayer extends StatelessWidget {
   const MiniPlayer({super.key});
 
   @override
   Widget build(BuildContext context) {
-    final scheme = Theme.of(context).colorScheme;
+    final c = TerminalColors.of(context);
     final player = context.watch<PlayerModel>();
     final track = player.currentTrack;
 
-    return InkWell(
-      onTap: track == null ? null : () => NowPlayingSheet.show(context),
-      child: Container(
-        height: 62,
-        decoration: BoxDecoration(
-          color: scheme.surface,
-          border: Border(top: BorderSide(color: scheme.outline)),
-        ),
-        padding: const EdgeInsets.symmetric(horizontal: 12),
-        child: Row(
-          children: [
-            AlbumArt(size: 42, track: track),
-            const SizedBox(width: 12),
-            Expanded(
+    return Material(
+      color: c.surfaceRaised,
+      child: InkWell(
+        onTap: track == null ? null : () => NowPlayingSheet.show(context),
+        child: StreamBuilder<Duration>(
+          stream: player.positionStream,
+          builder: (context, snapshot) {
+            final position = snapshot.data ?? Duration.zero;
+            final total = track?.duration ?? Duration.zero;
+            final fraction = total.inMilliseconds > 0
+                ? position.inMilliseconds / total.inMilliseconds
+                : 0.0;
+
+            return Container(
+              decoration: BoxDecoration(
+                border: Border(top: BorderSide(color: c.accent)),
+              ),
               child: Column(
-                mainAxisAlignment: MainAxisAlignment.center,
-                crossAxisAlignment: CrossAxisAlignment.start,
+                mainAxisSize: MainAxisSize.min,
                 children: [
-                  Text(
-                    track?.title ?? 'Nothing playing',
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: TextStyle(
-                      fontSize: 13.5,
-                      fontWeight: FontWeight.w600,
-                      color: track == null
-                          ? scheme.onSurfaceVariant
-                          : scheme.onSurface,
+                  SizedBox(
+                    height: 8,
+                    child: Center(child: BoxCharLine(fraction: fraction)),
+                  ),
+                  Padding(
+                    padding: const EdgeInsets.fromLTRB(16, 4, 8, 6),
+                    child: Row(
+                      children: [
+                        AlbumArt(
+                          size: 40,
+                          track: track,
+                          outline: c.borderStrong,
+                        ),
+                        const SizedBox(width: 10),
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                track?.title ?? 'nothing playing',
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                                style: TextStyle(
+                                  fontWeight: FontWeight.w700,
+                                  color: track == null ? c.textDim : c.text,
+                                ),
+                              ),
+                              if (track != null)
+                                Text(
+                                  '${track.artist} · '
+                                  '${formatDuration(position)}/'
+                                  '${formatDuration(total)}',
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                  style: TextStyle(
+                                    fontSize: 12,
+                                    color: c.textDim,
+                                  ),
+                                ),
+                            ],
+                          ),
+                        ),
+                        const SizedBox(width: 10),
+                        const PlayPauseButton(width: 44, height: 44),
+                        const SkipButton.next(width: 44, height: 44),
+                      ],
                     ),
                   ),
-                  if (track != null) ...[
-                    const SizedBox(height: 2),
-                    Text(
-                      track.artist,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: TextStyle(
-                        fontSize: 11.5,
-                        color: scheme.onSurfaceVariant,
-                      ),
-                    ),
-                  ],
                 ],
               ),
-            ),
-            IconButton(
-              onPressed: track == null ? null : player.togglePlayPause,
-              icon: Icon(
-                player.isPlaying
-                    ? Icons.pause_rounded
-                    : Icons.play_arrow_rounded,
-              ),
-              iconSize: 30,
-              color: scheme.onSurface,
-              tooltip: player.isPlaying ? 'Pause' : 'Play',
-            ),
-            IconButton(
-              onPressed: track == null ? null : player.next,
-              icon: const Icon(Icons.skip_next_rounded),
-              iconSize: 26,
-              color: scheme.onSurface,
-              tooltip: 'Next',
-            ),
-          ],
+            );
+          },
         ),
       ),
     );

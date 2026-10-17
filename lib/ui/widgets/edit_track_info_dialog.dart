@@ -117,7 +117,7 @@ class _EditTrackInfoDialogState extends State<EditTrackInfoDialog> {
     final scheme = Theme.of(context).colorScheme;
 
     return AlertDialog(
-      title: const Text('Edit Info'),
+      title: const Text('edit info'),
       contentPadding: const EdgeInsets.fromLTRB(24, 16, 24, 0),
       content: SizedBox(
         width: 420,
@@ -133,22 +133,22 @@ class _EditTrackInfoDialogState extends State<EditTrackInfoDialog> {
                 style: TextStyle(fontSize: 12, color: scheme.onSurfaceVariant),
               ),
               const SizedBox(height: 12),
-              _field('Title', _title, autofocus: true),
-              _field('Artist', _artist),
-              _field('Album', _album),
-              _field('Album artist', _albumArtist),
+              _field('title', _title, autofocus: true),
+              _field('artist', _artist),
+              _field('album', _album),
+              _field('album artist', _albumArtist),
               Row(
                 children: [
-                  Expanded(child: _field('Genre', _genre)),
+                  Expanded(child: _field('genre', _genre)),
                   const SizedBox(width: 12),
-                  SizedBox(width: 96, child: _field('Year', _year, digits: 4)),
+                  SizedBox(width: 96, child: _field('year', _year, digits: 4)),
                 ],
               ),
               Row(
                 children: [
-                  Expanded(child: _field('Track #', _trackNumber, digits: 3)),
+                  Expanded(child: _field('track #', _trackNumber, digits: 3)),
                   const SizedBox(width: 12),
-                  Expanded(child: _field('Disc #', _discNumber, digits: 2)),
+                  Expanded(child: _field('disc #', _discNumber, digits: 2)),
                 ],
               ),
               if (_error != null)
@@ -156,7 +156,7 @@ class _EditTrackInfoDialogState extends State<EditTrackInfoDialog> {
                   padding: const EdgeInsets.only(top: 4, bottom: 8),
                   child: Text(
                     _error!,
-                    style: TextStyle(fontSize: 12.5, color: scheme.error),
+                    style: TextStyle(fontSize: 12, color: scheme.error),
                   ),
                 ),
               Text(
@@ -171,7 +171,7 @@ class _EditTrackInfoDialogState extends State<EditTrackInfoDialog> {
       actions: [
         TextButton(
           onPressed: _saving ? null : () => Navigator.of(context).pop(),
-          child: const Text('Cancel'),
+          child: const Text('cancel'),
         ),
         FilledButton(
           onPressed: _saving ? null : _save,
@@ -181,7 +181,7 @@ class _EditTrackInfoDialogState extends State<EditTrackInfoDialog> {
                   height: 16,
                   child: CircularProgressIndicator(strokeWidth: 2),
                 )
-              : const Text('Save'),
+              : const Text('save'),
         ),
       ],
     );
@@ -209,8 +209,6 @@ class _EditTrackInfoDialogState extends State<EditTrackInfoDialog> {
           onSubmitted: (_) => _saving ? null : _save(),
           decoration: InputDecoration(
             labelText: label,
-            isDense: true,
-            border: const OutlineInputBorder(),
           ),
         ),
       );

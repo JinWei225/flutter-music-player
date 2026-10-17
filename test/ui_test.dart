@@ -96,16 +96,10 @@ void main() {
   testWidgets('All Songs lists every track with real tags', (tester) async {
     await pumpApp(tester);
 
-    // "All Songs" is both the sidebar entry and the page heading, so scope
-    // the check to the page itself.
-    expect(
-      find.descendant(
-        of: find.byType(AllSongsPage),
-        matching: find.text('All Songs'),
-      ),
-      findsOneWidget,
-    );
-    expect(find.text('17 songs'), findsOneWidget);
+    // The page title is set into the main panel's border, and the header
+    // line carries the library totals.
+    expect(find.text('┤ all songs ├'), findsOneWidget);
+    expect(find.text('17 songs · 3 albums'), findsOneWidget);
     // Titles come from the m4a tags, not the filenames.
     expect(find.text('ABCD'), findsWidgets);
     expect(find.text('Magic (feat. JULIE)'), findsWidgets);
@@ -133,11 +127,11 @@ void main() {
     await tester.tap(find.byTooltip('Sort: Title A-Z'));
     await tester.pumpAndSettle();
     // All six combinations are offered.
-    expect(find.text('Title  Z-A'), findsOneWidget);
-    expect(find.text('Artist  A-Z'), findsOneWidget);
-    expect(find.text('Album  Z-A'), findsOneWidget);
+    expect(find.text('title  z-a'), findsOneWidget);
+    expect(find.text('artist  a-z'), findsOneWidget);
+    expect(find.text('album  z-a'), findsOneWidget);
 
-    await tester.tap(find.text('Artist  Z-A'));
+    await tester.tap(find.text('artist  z-a'));
     await tester.pumpAndSettle();
 
     expect(library.sortField, SortField.artist);
@@ -158,7 +152,7 @@ void main() {
 
     // And the action labels must stay on one line; when the sort menu shared
     // this row they wrapped to "Play / All" and "Shuffl / e".
-    for (final label in ['Play All', 'Shuffle']) {
+    for (final label in ['play all', 'shuffle']) {
       expect(
         tester.getSize(find.text(label)).height,
         lessThan(24),
@@ -167,17 +161,17 @@ void main() {
       expect(tester.getRect(find.text(label)).right, lessThanOrEqualTo(400));
     }
 
-    // The heading must not be ellipsised into "All S...".
+    // The heading must not be ellipsised into "all s...".
     final heading = tester.renderObject<RenderParagraph>(
       find.descendant(
         of: find.byType(AllSongsPage),
-        matching: find.text('All Songs'),
+        matching: find.text('all songs'),
       ),
     );
     expect(
       heading.didExceedMaxLines,
       isFalse,
-      reason: 'the "All Songs" heading was truncated',
+      reason: 'the "all songs" heading was truncated',
     );
   });
 
@@ -200,10 +194,10 @@ void main() {
   ) async {
     await pumpApp(tester);
 
-    await tester.tap(find.text('Albums'));
+    await tester.tap(find.text('albums'));
     await tester.pumpAndSettle();
 
-    expect(find.text('3 albums'), findsOneWidget);
+    expect(find.text('3 albums · sorted by name'), findsOneWidget);
     expect(find.text('NA'), findsWidgets);
     expect(find.text('AIR - EP'), findsWidgets);
 
@@ -212,20 +206,20 @@ void main() {
 
     // Detail page: header, metadata line, and the two action buttons.
     expect(find.text('ALBUM'), findsOneWidget);
-    expect(find.text('Play All'), findsOneWidget);
-    expect(find.text('Shuffle'), findsOneWidget);
+    expect(find.text('play all'), findsOneWidget);
+    expect(find.text('shuffle'), findsOneWidget);
     expect(find.textContaining('YEJI'), findsWidgets);
-    expect(find.textContaining('4 songs'), findsOneWidget);
+    expect(find.textContaining('4 tracks'), findsOneWidget);
   });
 
   testWidgets('Play All queues the album in track order', (tester) async {
     await pumpApp(tester);
 
-    await tester.tap(find.text('Albums'));
+    await tester.tap(find.text('albums'));
     await tester.pumpAndSettle();
     await tester.tap(find.text('AIR - EP').first);
     await tester.pumpAndSettle();
-    await tester.tap(find.text('Play All'));
+    await tester.tap(find.text('play all'));
     await tester.pumpAndSettle();
 
     expect(player.shuffle, isFalse);
@@ -236,11 +230,11 @@ void main() {
   testWidgets('album Shuffle plays the album with shuffle on', (tester) async {
     await pumpApp(tester);
 
-    await tester.tap(find.text('Albums'));
+    await tester.tap(find.text('albums'));
     await tester.pumpAndSettle();
     await tester.tap(find.text('NA').first);
     await tester.pumpAndSettle();
-    await tester.tap(find.text('Shuffle'));
+    await tester.tap(find.text('shuffle'));
     await tester.pumpAndSettle();
 
     expect(player.shuffle, isTrue);
@@ -258,8 +252,8 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.byType(NowPlayingPanel), findsOneWidget);
-    expect(find.text('Up next'), findsOneWidget);
-    expect(find.textContaining(RegExp(r'^\d+ of 17$')), findsOneWidget);
+    expect(find.text('UP NEXT'), findsOneWidget);
+    expect(find.textContaining(RegExp(r'^\d+/17$')), findsOneWidget);
     // The player bar keeps the transport; the panel does not repeat it.
     expect(find.byTooltip('Next'), findsOneWidget);
 
@@ -299,9 +293,9 @@ void main() {
     await tester.pumpAndSettle();
     expect(find.byType(NowPlayingPanel), findsOneWidget);
 
-    // Docked, not overlaid: the panel ends at the window edge and the
-    // library is still clickable beside it.
-    expect(tester.getRect(find.byType(NowPlayingPanel)).right, 1100);
+    // Docked, not overlaid: the panel ends at the window's outer padding
+    // and the library is still clickable beside it.
+    expect(tester.getRect(find.byType(NowPlayingPanel)).right, 1100 - 16);
     await tester.tap(find.text('Air').first);
     await tester.pumpAndSettle();
     expect(player.currentTrack?.title, 'Air');
@@ -366,11 +360,11 @@ void main() {
     await pumpApp(tester);
 
     // Dark is the default, so the toggle offers light.
-    expect(find.text('Light mode'), findsOneWidget);
-    await tester.tap(find.text('Light mode'));
+    expect(find.text('light mode'), findsOneWidget);
+    await tester.tap(find.text('light mode'));
     await tester.pumpAndSettle();
 
-    expect(find.text('Dark mode'), findsOneWidget);
+    expect(find.text('dark mode'), findsOneWidget);
     expect(settings.darkMode, isFalse);
   });
 
@@ -380,7 +374,7 @@ void main() {
     await player.setVolume(0.33);
     await tester.pumpAndSettle();
 
-    expect(find.text('33'), findsOneWidget);
+    expect(find.text('33%'), findsOneWidget);
     expect(settings.volume, closeTo(0.33, 1e-9));
   });
 
@@ -389,11 +383,11 @@ void main() {
         (tester) async {
       await pumpApp(tester);
 
-      await tester.tap(find.text('Albums'));
+      await tester.tap(find.text('albums'));
       await tester.pumpAndSettle();
       await tester.tap(find.text('AIR - EP').first);
       await tester.pumpAndSettle();
-      await tester.tap(find.text('Play All'));
+      await tester.tap(find.text('play all'));
       await tester.pumpAndSettle();
       expect(player.currentTrack?.title, 'Air');
 
@@ -401,10 +395,10 @@ void main() {
       final last = player.queueInPlayOrder.last.title;
       await tester.tap(find.text(last).first, buttons: kSecondaryButton);
       await tester.pumpAndSettle();
-      expect(find.text('Play Next'), findsOneWidget);
-      expect(find.text('Edit Info…'), findsOneWidget);
+      expect(find.text('play next'), findsOneWidget);
+      expect(find.text('edit info…'), findsOneWidget);
 
-      await tester.tap(find.text('Play Next'));
+      await tester.tap(find.text('play next'));
       await tester.pumpAndSettle();
 
       expect(player.queueInPlayOrder[1].title, last);
@@ -422,9 +416,9 @@ void main() {
 
       await tester.tap(find.text('CAKE').first, buttons: kSecondaryButton);
       await tester.pumpAndSettle();
-      expect(find.text('Edit Info…'), findsOneWidget);
+      expect(find.text('edit info…'), findsOneWidget);
 
-      await tester.tap(find.text('Edit Info…'));
+      await tester.tap(find.text('edit info…'));
       await tester.pumpAndSettle();
 
       expect(find.byType(EditTrackInfoDialog), findsOneWidget);
@@ -433,7 +427,7 @@ void main() {
       expect(find.widgetWithText(TextField, 'KILL MY DOUBT - EP'), findsOneWidget);
       expect(find.text('02 CAKE.m4a'), findsOneWidget);
 
-      await tester.tap(find.text('Cancel'));
+      await tester.tap(find.text('cancel'));
       await tester.pumpAndSettle();
       expect(find.byType(EditTrackInfoDialog), findsNothing);
       expect(written, isEmpty);
@@ -446,13 +440,13 @@ void main() {
 
       await tester.longPress(find.text('CAKE').first);
       await tester.pumpAndSettle();
-      await tester.tap(find.text('Edit Info…'));
+      await tester.tap(find.text('edit info…'));
       await tester.pumpAndSettle();
 
       await tester.enterText(find.widgetWithText(TextField, 'CAKE'), 'Cake');
       await tester.enterText(
           find.widgetWithText(TextField, 'KILL MY DOUBT - EP'), 'Kill My Doubt');
-      await tester.tap(find.text('Save'));
+      await tester.tap(find.text('save'));
       await tester.pumpAndSettle();
 
       expect(find.byType(EditTrackInfoDialog), findsNothing);
@@ -488,9 +482,9 @@ void main() {
 
       await tester.tap(find.text('CAKE').first, buttons: kSecondaryButton);
       await tester.pumpAndSettle();
-      await tester.tap(find.text('Edit Info…'));
+      await tester.tap(find.text('edit info…'));
       await tester.pumpAndSettle();
-      await tester.tap(find.text('Save'));
+      await tester.tap(find.text('save'));
       await tester.pumpAndSettle();
 
       expect(find.byType(EditTrackInfoDialog), findsOneWidget);
@@ -512,14 +506,14 @@ void main() {
 
       await tester.tap(find.text('CAKE').first, buttons: kSecondaryButton);
       await tester.pumpAndSettle();
-      await tester.tap(find.text('Edit Info…'));
+      await tester.tap(find.text('edit info…'));
       await tester.pumpAndSettle();
-      await tester.tap(find.text('Save'));
+      await tester.tap(find.text('save'));
       await tester.pumpAndSettle();
 
       expect(find.textContaining('bad atom'), findsOneWidget);
       // Not stuck: Cancel works again.
-      await tester.tap(find.text('Cancel'));
+      await tester.tap(find.text('cancel'));
       await tester.pumpAndSettle();
       expect(find.byType(EditTrackInfoDialog), findsNothing);
     });
@@ -535,10 +529,10 @@ void main() {
 
       await tester.tap(find.text('CAKE').first, buttons: kSecondaryButton);
       await tester.pumpAndSettle();
-      await tester.tap(find.text('Edit Info…'));
+      await tester.tap(find.text('edit info…'));
       await tester.pumpAndSettle();
       await tester.enterText(find.widgetWithText(TextField, 'CAKE'), 'Cake');
-      await tester.tap(find.text('Save'));
+      await tester.tap(find.text('save'));
       await tester.pumpAndSettle();
 
       expect(player.currentTrack?.title, 'Cake');
@@ -555,15 +549,15 @@ void main() {
       await pumpApp(tester, size: tablet);
 
       expect(find.byType(PlayerBar), findsOneWidget);
-      // Labels live in tooltips now; "Albums" is not drawn anywhere.
-      expect(find.text('Albums'), findsNothing);
+      // Labels live in tooltips now; "albums" is not drawn anywhere.
+      expect(find.text('albums'), findsNothing);
       expect(find.byTooltip('Albums'), findsOneWidget);
-      expect(find.text('Light mode'), findsNothing);
+      expect(find.text('light mode'), findsNothing);
       expect(find.byTooltip('Light mode'), findsOneWidget);
 
       await tester.tap(find.byTooltip('Albums'));
       await tester.pumpAndSettle();
-      expect(find.text('3 albums'), findsOneWidget);
+      expect(find.text('3 albums · sorted by name'), findsOneWidget);
     });
 
     testWidgets('Now Playing slides over the library and dismisses on tap', (
@@ -581,8 +575,9 @@ void main() {
 
       await tester.tap(find.byTooltip('Show Now Playing'));
       await tester.pumpAndSettle();
-      expect(tester.getRect(find.byType(NowPlayingPanel)).right, 800);
-      expect(find.text('Up next'), findsOneWidget);
+      // Open, it lines up with the window's outer padding.
+      expect(tester.getRect(find.byType(NowPlayingPanel)).right, 800 - 16);
+      expect(find.text('UP NEXT'), findsOneWidget);
 
       // Tapping the dimmed library closes the panel instead of hitting a song.
       await tester.tapAt(const Offset(150, 400));
@@ -604,7 +599,9 @@ void main() {
     ) async {
       await pumpApp(tester, size: phone);
 
-      expect(find.byType(NavigationBar), findsOneWidget);
+      // Two text tabs stand in for a Material navigation bar.
+      expect(find.text('songs'), findsOneWidget);
+      expect(find.text('albums'), findsOneWidget);
       expect(find.byType(MiniPlayer), findsOneWidget);
       // The desktop chrome must be gone.
       expect(find.byType(PlayerBar), findsNothing);
@@ -618,12 +615,13 @@ void main() {
     ) async {
       await pumpApp(tester, size: phone);
 
-      expect(find.text('TITLE'), findsOneWidget);
+      // No table heading at all on a phone; rows are two-line entries.
+      expect(find.textContaining('TITLE'), findsNothing);
       expect(find.text('ALBUM'), findsNothing);
       expect(find.text('ARTIST'), findsNothing);
       // Artist and album move under the title instead of vanishing.
-      expect(find.text('NAYEON  ·  NA'), findsWidgets);
-      expect(find.text('YEJI  ·  AIR - EP'), findsWidgets);
+      expect(find.text('NAYEON · NA'), findsWidgets);
+      expect(find.text('YEJI · AIR - EP'), findsWidgets);
     });
 
     testWidgets('a tap anywhere on a row plays it, not just on its text', (
@@ -662,7 +660,7 @@ void main() {
       expect(inSheet(find.byTooltip('Previous')), findsOneWidget);
       expect(inSheet(find.byTooltip('Shuffle: off')), findsOneWidget);
       expect(inSheet(find.byTooltip('Repeat: list')), findsOneWidget);
-      expect(inSheet(find.text('Queue')), findsOneWidget);
+      expect(inSheet(find.text('UP NEXT')), findsOneWidget);
     });
 
     testWidgets('navigating to Albums works from the bottom bar', (
@@ -670,15 +668,15 @@ void main() {
     ) async {
       await pumpApp(tester, size: phone);
 
-      await tester.tap(find.text('Albums'));
+      await tester.tap(find.text('albums'));
       await tester.pumpAndSettle();
-      expect(find.text('3 albums'), findsOneWidget);
+      expect(find.text('mewsic ~/albums'), findsOneWidget);
 
       await tester.tap(find.text('AIR - EP').first);
       await tester.pumpAndSettle();
-      expect(find.text('Play All'), findsOneWidget);
+      expect(find.text('play all'), findsOneWidget);
 
-      await tester.tap(find.text('Play All'));
+      await tester.tap(find.text('play all'));
       await tester.pumpAndSettle();
       expect(player.currentTrack?.title, 'Air');
     });

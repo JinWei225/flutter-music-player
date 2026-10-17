@@ -6,7 +6,9 @@ import '../../core/player/player_model.dart';
 import '../theme.dart';
 import '../widgets/album_art.dart';
 import '../widgets/edit_track_info_dialog.dart';
+import '../widgets/phone_header.dart';
 import '../widgets/play_next.dart';
+import '../widgets/terminal_widgets.dart';
 import '../widgets/track_row.dart';
 
 class AlbumDetailPage extends StatelessWidget {
@@ -21,118 +23,163 @@ class AlbumDetailPage extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final scheme = Theme.of(context).colorScheme;
     final player = context.watch<PlayerModel>();
     final current = player.currentTrack;
+    final phone = isPhoneLayout(context);
+    // Only a compilation needs an artist per row; on a one-artist album it
+    // would repeat the header on every line.
+    final mixedArtists = album.tracks.map((t) => t.artist).toSet().length > 1;
+
+    final list = ListView.builder(
+      padding: EdgeInsets.only(top: phone ? 4 : 2, bottom: 8),
+      itemCount: album.tracks.length,
+      itemBuilder: (context, i) {
+        final t = album.tracks[i];
+        return TrackRow(
+          // Show the album's own track numbering, not the row position.
+          leading: '${t.trackNumber ?? i + 1}',
+          title: t.title,
+          artist: mixedArtists ? t.artist : null,
+          duration: t.duration,
+          isCurrent: current == t,
+          onPlay: () => player.playTracks(album.tracks, startIndex: i),
+          onPlayNext: playNextAction(context, t),
+          onEdit: editTrackAction(context, t),
+        );
+      },
+    );
+
+    if (phone) {
+      return Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          PhoneTopLine(path: '~/albums/${pathSlug(album.name)}'),
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                _BackLink(onBack: onBack, minHeight: 44),
+                const SizedBox(height: 6),
+                Row(
+                  crossAxisAlignment: CrossAxisAlignment.end,
+                  children: [
+                    AlbumArt(size: 96, track: album.tracks.first),
+                    const SizedBox(width: 14),
+                    Expanded(child: _Info(album: album, compact: true)),
+                  ],
+                ),
+                const SizedBox(height: 14),
+                // Beside a 96px cover there is not enough width for the
+                // buttons, so on a phone they move below.
+                _Actions(album: album, fillWidth: true),
+              ],
+            ),
+          ),
+          const DashedRule(),
+          Expanded(child: list),
+        ],
+      );
+    }
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        Padding(
-          padding: const EdgeInsets.fromLTRB(12, 12, 16, 0),
-          child: Row(
-            children: [
-              TextButton.icon(
-                onPressed: onBack,
-                icon: const Icon(Icons.arrow_back_rounded, size: 18),
-                label: const Text('Albums'),
-                style: TextButton.styleFrom(
-                  foregroundColor: scheme.onSurfaceVariant,
-                  visualDensity: VisualDensity.compact,
-                ),
-              ),
-            ],
-          ),
+        Align(
+          alignment: Alignment.centerLeft,
+          child: _BackLink(onBack: onBack),
         ),
+        const SizedBox(height: 14),
         LayoutBuilder(
           builder: (context, constraints) {
-            final compact = constraints.maxWidth < 640;
-            return Padding(
-              padding: EdgeInsets.fromLTRB(20, 8, 20, compact ? 14 : 20),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                children: [
-                  Row(
-                    crossAxisAlignment: CrossAxisAlignment.end,
-                    children: [
-                      AlbumArt(
-                        size: compact ? 96 : 160,
-                        radius: 10,
-                        track: album.tracks.first,
-                      ),
-                      SizedBox(width: compact ? 14 : 22),
-                      Expanded(
-                        child: _Info(
-                          album: album,
-                          compact: compact,
-                          // Beside a 96px cover there is not enough width for
-                          // the buttons, so on a phone they move below.
-                          actions: compact ? null : _actions(context, false),
-                        ),
-                      ),
-                    ],
+            // A narrow panel (Now Playing docked on a small window) gets a
+            // smaller cover rather than a squeezed title.
+            final artSize = constraints.maxWidth < 560 ? 140.0 : 220.0;
+            return Row(
+              crossAxisAlignment: CrossAxisAlignment.end,
+              children: [
+                AlbumArt(size: artSize, track: album.tracks.first),
+                const SizedBox(width: 24),
+                Expanded(
+                  child: _Info(
+                    album: album,
+                    compact: false,
+                    actions: _Actions(album: album),
                   ),
-                  if (compact) ...[
-                    const SizedBox(height: 14),
-                    _actions(context, true),
-                  ],
-                ],
-              ),
+                ),
+              ],
             );
           },
         ),
-        const TrackListHeader(showAlbum: false),
-        Expanded(
-          child: ListView.builder(
-            padding: const EdgeInsets.only(bottom: 12),
-            itemCount: album.tracks.length,
-            itemBuilder: (context, i) {
-              final t = album.tracks[i];
-              return TrackRow(
-                // Show the album's own track numbering, not the row position.
-                leading: '${t.trackNumber ?? i + 1}',
-                title: t.title,
-                artist: t.artist,
-                duration: t.duration,
-                isCurrent: current == t,
-                onPlay: () => player.playTracks(album.tracks, startIndex: i),
-                onPlayNext: playNextAction(context, t),
-                onEdit: editTrackAction(context, t),
-              );
-            },
-          ),
-        ),
+        const SizedBox(height: 18),
+        TrackListHeader(showArtist: mixedArtists, showAlbum: false),
+        Expanded(child: list),
       ],
     );
   }
+}
 
-  /// When [fillWidth] the two buttons split the row evenly, which is what the
-  /// phone layout wants; otherwise they size to their labels.
-  Widget _actions(BuildContext context, bool fillWidth) {
-    final scheme = Theme.of(context).colorScheme;
-    final player = context.read<PlayerModel>();
+/// `‹ cd ..  albums`
+class _BackLink extends StatelessWidget {
+  final VoidCallback onBack;
+  final double minHeight;
 
-    final play = FilledButton.icon(
-      onPressed: () =>
-          player.playTracks(album.tracks, startIndex: 0, shuffle: false),
-      icon: const Icon(Icons.play_arrow_rounded, size: 20),
-      label: const Text('Play All', maxLines: 1, overflow: TextOverflow.ellipsis),
-      style: FilledButton.styleFrom(
-        padding: EdgeInsets.symmetric(
-            horizontal: fillWidth ? 12 : 20, vertical: 14),
+  const _BackLink({required this.onBack, this.minHeight = 0});
+
+  @override
+  Widget build(BuildContext context) {
+    final c = TerminalColors.of(context);
+    return Semantics(
+      button: true,
+      label: 'Back to albums',
+      excludeSemantics: true,
+      child: InkWell(
+        onTap: onBack,
+        child: Container(
+          constraints: BoxConstraints(minHeight: minHeight),
+          alignment: Alignment.centerLeft,
+          padding: const EdgeInsets.symmetric(vertical: 4),
+          child: Text.rich(
+            TextSpan(
+              text: '‹ cd ..  ',
+              style: TextStyle(color: c.text2),
+              children: [
+                TextSpan(text: 'albums', style: TextStyle(color: c.textDim)),
+              ],
+            ),
+          ),
+        ),
       ),
     );
+  }
+}
 
-    final shuffle = OutlinedButton.icon(
+class _Actions extends StatelessWidget {
+  final Album album;
+
+  /// The two buttons split the row evenly, which is what the phone layout
+  /// wants; otherwise they size to their labels.
+  final bool fillWidth;
+
+  const _Actions({required this.album, this.fillWidth = false});
+
+  @override
+  Widget build(BuildContext context) {
+    final player = context.read<PlayerModel>();
+
+    final play = TermButton(
+      primary: true,
+      glyph: const Text('▶'),
+      label: 'play all',
+      minHeight: fillWidth ? 44 : 0,
+      onPressed: () =>
+          player.playTracks(album.tracks, startIndex: 0, shuffle: false),
+    );
+    final shuffle = TermButton(
+      glyph: const ShuffleGlyph(),
+      label: 'shuffle',
+      minHeight: fillWidth ? 44 : 0,
       onPressed: () => player.playTracks(album.tracks, shuffle: true),
-      icon: const Icon(Icons.shuffle_rounded, size: 18),
-      label: const Text('Shuffle', maxLines: 1, overflow: TextOverflow.ellipsis),
-      style: OutlinedButton.styleFrom(
-        padding: EdgeInsets.symmetric(
-            horizontal: fillWidth ? 12 : 20, vertical: 14),
-        foregroundColor: scheme.onSurface,
-        side: BorderSide(color: scheme.outline),
-      ),
     );
 
     if (!fillWidth) {
@@ -157,58 +204,56 @@ class _Info extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final scheme = Theme.of(context).colorScheme;
+    final c = TerminalColors.of(context);
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       mainAxisSize: MainAxisSize.min,
       children: [
-        Text(
-          'ALBUM',
-          style: TextStyle(
-            fontSize: 11,
-            fontWeight: FontWeight.w700,
-            letterSpacing: 1.0,
-            color: scheme.onSurfaceVariant,
-          ),
-        ),
-        SizedBox(height: compact ? 4 : 8),
+        Text('ALBUM', style: columnHeadingStyle(context).copyWith(
+          letterSpacing: 1.3,
+        )),
+        SizedBox(height: compact ? 2 : 6),
         Text(
           album.name,
           maxLines: 2,
           overflow: TextOverflow.ellipsis,
           style: TextStyle(
-            fontSize: compact ? 21 : 30,
-            fontWeight: FontWeight.w800,
-            height: 1.1,
-            color: scheme.onSurface,
+            fontSize: compact ? 20 : 32,
+            fontWeight: FontWeight.w700,
+            height: 1.15,
           ),
         ),
-        SizedBox(height: compact ? 4 : 8),
+        SizedBox(height: compact ? 2 : 6),
         Text(
-          _subtitle(),
-          maxLines: 2,
+          album.artist,
+          maxLines: 1,
           overflow: TextOverflow.ellipsis,
-          style: TextStyle(
-            fontSize: compact ? 12 : 13,
-            color: scheme.onSurfaceVariant,
-          ),
+          style: TextStyle(fontSize: compact ? 13 : 15, color: c.text2),
+        ),
+        SizedBox(height: compact ? 0 : 6),
+        Text(
+          _details(),
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
+          style: TextStyle(fontSize: compact ? 12 : 13, color: c.textDim),
         ),
         if (actions != null) ...[
-          const SizedBox(height: 18),
+          const SizedBox(height: 16),
           actions!,
         ],
       ],
     );
   }
 
-  String _subtitle() {
-    final parts = <String>[album.artist];
-    if (album.year != null && album.year!.isNotEmpty) parts.add(album.year!);
-    parts.add(
-        '${album.tracks.length} ${album.tracks.length == 1 ? "song" : "songs"}');
+  /// `2024 · 4 tracks · 16:59`
+  String _details() {
+    final count = album.tracks.length;
     final total = album.totalDuration;
-    if (total > Duration.zero) parts.add(formatDuration(total));
-    return parts.join('  ·  ');
+    return [
+      if (album.year != null && album.year!.isNotEmpty) album.year!,
+      '$count ${count == 1 ? 'track' : 'tracks'}',
+      if (total > Duration.zero) formatDuration(total),
+    ].join(' · ');
   }
 }

@@ -15,11 +15,15 @@ class QueueList extends StatelessWidget {
   final double horizontalPadding;
   final EdgeInsets padding;
 
+  /// 44 on a phone, where each row is a tap target.
+  final double rowMinHeight;
+
   const QueueList({
     super.key,
     this.shrinkWrap = false,
     this.horizontalPadding = 16,
     this.padding = const EdgeInsets.symmetric(vertical: 6),
+    this.rowMinHeight = 0,
   });
 
   @override
@@ -43,6 +47,7 @@ class QueueList extends StatelessWidget {
           isCurrent: i == current,
           isPast: i < current,
           horizontalPadding: horizontalPadding,
+          minHeight: rowMinHeight,
           onTap: () => player.playQueuePosition(i),
           onPlayNext: i == current ? null : () => player.playNext(t),
         );
@@ -51,6 +56,8 @@ class QueueList extends StatelessWidget {
   }
 }
 
+/// `01  title            3:58` over a dim artist line. The playing entry is
+/// marked `▶` on the playing-row ground, like the library lists.
 class QueueRow extends StatelessWidget {
   final int index;
   final String title;
@@ -59,6 +66,7 @@ class QueueRow extends StatelessWidget {
   final bool isCurrent;
   final bool isPast;
   final double horizontalPadding;
+  final double minHeight;
   final VoidCallback onTap;
 
   /// Null for the row that is playing: it is already "next" as far as the
@@ -76,6 +84,7 @@ class QueueRow extends StatelessWidget {
     required this.onTap,
     this.onPlayNext,
     this.horizontalPadding = 16,
+    this.minHeight = 0,
   });
 
   Future<void> _showMenu(BuildContext context, Offset at) async {
@@ -85,18 +94,16 @@ class QueueRow extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final scheme = Theme.of(context).colorScheme;
-    final surfaces = AppSurfaces.of(context);
+    final c = TerminalColors.of(context);
 
     // Already-played entries recede so the upcoming queue reads first.
+    final fade = isPast ? 0.55 : 1.0;
     final titleColor = isCurrent
-        ? scheme.primary
-        : isPast
-        ? scheme.onSurfaceVariant.withValues(alpha: 0.6)
-        : scheme.onSurface;
-    final mutedColor = scheme.onSurfaceVariant.withValues(
-      alpha: isPast ? 0.5 : 1,
-    );
+        ? c.accent
+        : c.text.withValues(alpha: fade);
+    final mutedColor = isCurrent
+        ? c.accent
+        : c.textDim.withValues(alpha: fade);
 
     return GestureDetector(
       onSecondaryTapUp: onPlayNext == null
@@ -105,61 +112,64 @@ class QueueRow extends StatelessWidget {
       onLongPressStart: onPlayNext == null
           ? null
           : (d) => _showMenu(context, d.globalPosition),
-      child: InkWell(
-        onTap: onTap,
-        hoverColor: surfaces.hover,
-        child: Container(
-          color: isCurrent ? scheme.primary.withValues(alpha: 0.10) : null,
-          padding: EdgeInsets.symmetric(
-            horizontal: horizontalPadding,
-            vertical: 8,
-          ),
-          child: Row(
-            children: [
-              SizedBox(
-                width: 22,
-                child: isCurrent
-                    ? Icon(
-                        Icons.equalizer_rounded,
-                        size: 15,
-                        color: scheme.primary,
-                      )
-                    : Text(
-                        '${index + 1}',
-                        style: TextStyle(fontSize: 11, color: mutedColor),
-                      ),
-              ),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      title,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: TextStyle(
-                        fontSize: 13,
-                        fontWeight: isCurrent
-                            ? FontWeight.w600
-                            : FontWeight.w500,
-                        color: titleColor,
-                      ),
+      child: Material(
+        color: isCurrent ? c.playingRow : Colors.transparent,
+        child: InkWell(
+          onTap: onTap,
+          child: Container(
+            constraints: BoxConstraints(minHeight: minHeight),
+            padding: EdgeInsets.symmetric(
+              horizontal: horizontalPadding,
+              vertical: 3,
+            ),
+            child: Row(
+              children: [
+                SizedBox(
+                  width: 24,
+                  child: Text(
+                    isCurrent ? '▶' : '${index + 1}'.padLeft(2, '0'),
+                    style: TextStyle(
+                      color: isCurrent
+                          ? c.ok
+                          : c.textFaint.withValues(alpha: fade),
                     ),
-                    Text(
-                      artist,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: TextStyle(fontSize: 11, color: mutedColor),
-                    ),
-                  ],
+                  ),
                 ),
-              ),
-              const SizedBox(width: 8),
-              Text(
-                formatDuration(duration),
-                style: TextStyle(fontSize: 11, color: mutedColor),
-              ),
-            ],
+                const SizedBox(width: 8),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        title,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: TextStyle(
+                          fontWeight: isCurrent
+                              ? FontWeight.w700
+                              : FontWeight.w400,
+                          color: titleColor,
+                        ),
+                      ),
+                      Text(
+                        artist,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: TextStyle(fontSize: 12, color: mutedColor),
+                      ),
+                    ],
+                  ),
+                ),
+                const SizedBox(width: 8),
+                Text(
+                  formatDuration(duration),
+                  style: TextStyle(
+                    fontFeatures: const [FontFeature.tabularFigures()],
+                    color: mutedColor,
+                  ),
+                ),
+              ],
+            ),
           ),
         ),
       ),

@@ -3,125 +3,114 @@ import 'package:provider/provider.dart';
 
 import '../../core/models/track.dart';
 import '../../core/player/player_model.dart';
+import '../theme.dart';
 import 'album_art.dart';
 import 'player/queue_list.dart';
+import 'terminal_panel.dart';
+import 'terminal_widgets.dart';
 
-/// Now Playing for wide layouts: the current track's art and position on top,
-/// the queue in playback order underneath. Docked beside the library on
-/// desktop; slid over it on a tablet held upright. Transport lives in the
-/// player bar, which is always visible alongside, so it is not repeated here.
+/// Now Playing for wide layouts, boxed as `┤ now playing ├` with a `×` on
+/// its border: the current track's art and tags on top, the queue in
+/// playback order underneath. Docked beside the library on desktop; slid
+/// over it on a tablet held upright. Transport lives in the player bar,
+/// which is always visible alongside, so it is not repeated here.
 class NowPlayingPanel extends StatelessWidget {
   final double width;
   final VoidCallback onClose;
-
-  /// Adds a shadow for when the panel floats over the library instead of
-  /// sitting beside it.
-  final bool elevated;
 
   const NowPlayingPanel({
     super.key,
     required this.width,
     required this.onClose,
-    this.elevated = false,
   });
+
+  static const _padding = EdgeInsets.fromLTRB(16, 11, 16, 8);
 
   @override
   Widget build(BuildContext context) {
-    final scheme = Theme.of(context).colorScheme;
+    final c = TerminalColors.of(context);
     final player = context.watch<PlayerModel>();
     final track = player.currentTrack;
     final tracks = player.queueInPlayOrder;
     final position = player.currentQueuePosition;
+    final inner = width - 2 - _padding.horizontal;
 
-    return Container(
+    return SizedBox(
       width: width,
-      decoration: BoxDecoration(
-        color: scheme.surface,
-        border: Border(left: BorderSide(color: scheme.outline)),
-        boxShadow: elevated
-            ? [
-                BoxShadow(
-                  color: Colors.black.withValues(alpha: 0.35),
-                  blurRadius: 24,
-                  offset: const Offset(-6, 0),
-                ),
-              ]
-            : null,
-      ),
-      // Material so the queue rows have something to paint their ink on.
-      child: Material(
-        type: MaterialType.transparency,
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            Padding(
-              padding: const EdgeInsets.fromLTRB(16, 14, 8, 10),
-              child: Row(
-                children: [
-                  Text(
-                    'Now Playing',
-                    style: TextStyle(
-                      fontSize: 15,
-                      fontWeight: FontWeight.w700,
-                      color: scheme.onSurface,
-                    ),
+      child: TerminalPanel(
+        title: 'now playing',
+        padding: _padding,
+        trailing: _CloseButton(onClose: onClose),
+        // Material so the queue rows have something to paint their ink on.
+        child: Material(
+          type: MaterialType.transparency,
+          child: track == null
+              ? Center(
+                  child: Text(
+                    'nothing playing',
+                    style: TextStyle(color: c.textDim),
                   ),
-                  const Spacer(),
-                  IconButton(
-                    onPressed: onClose,
-                    icon: const Icon(Icons.close_rounded, size: 18),
-                    tooltip: 'Hide Now Playing',
-                    color: scheme.onSurfaceVariant,
-                    visualDensity: VisualDensity.compact,
-                  ),
-                ],
-              ),
-            ),
-            Divider(height: 1, color: scheme.outline),
-            Expanded(
-              child: track == null
-                  ? Center(
-                      child: Text(
-                        'Nothing playing',
-                        style: TextStyle(
-                          fontSize: 13,
-                          color: scheme.onSurfaceVariant,
+                )
+              // One list so the art scrolls away under a long queue rather
+              // than pinning the queue into a short strip.
+              : ListView.builder(
+                  itemCount: tracks.length + 2,
+                  itemBuilder: (context, i) {
+                    if (i == 0) return _Hero(track: track, artSize: inner);
+                    if (i == 1) {
+                      return Padding(
+                        padding: const EdgeInsets.only(top: 14, bottom: 6),
+                        child: SectionRule(
+                          label: 'UP NEXT',
+                          trailing: '${position + 1}/${tracks.length}',
                         ),
-                      ),
-                    )
-                  // One list so the art scrolls away under a long queue
-                  // rather than pinning the queue into a short strip.
-                  : ListView.builder(
-                      padding: const EdgeInsets.only(bottom: 8),
-                      itemCount: tracks.length + 2,
-                      itemBuilder: (context, i) {
-                        if (i == 0) {
-                          return _Hero(track: track, width: width);
-                        }
-                        if (i == 1) {
-                          return _UpNextHeader(
-                            position: position,
-                            count: tracks.length,
-                          );
-                        }
-                        final index = i - 2;
-                        final t = tracks[index];
-                        return QueueRow(
-                          index: index,
-                          title: t.title,
-                          artist: t.artist,
-                          duration: t.duration,
-                          isCurrent: index == position,
-                          isPast: index < position,
-                          onTap: () => player.playQueuePosition(index),
-                          onPlayNext: index == position
-                              ? null
-                              : () => player.playNext(t),
-                        );
-                      },
-                    ),
+                      );
+                    }
+                    final index = i - 2;
+                    final t = tracks[index];
+                    return QueueRow(
+                      index: index,
+                      title: t.title,
+                      artist: t.artist,
+                      duration: t.duration,
+                      isCurrent: index == position,
+                      isPast: index < position,
+                      horizontalPadding: 0,
+                      onTap: () => player.playQueuePosition(index),
+                      onPlayNext: index == position
+                          ? null
+                          : () => player.playNext(t),
+                    );
+                  },
+                ),
+        ),
+      ),
+    );
+  }
+}
+
+/// The `×` set into the panel's top border.
+class _CloseButton extends StatelessWidget {
+  final VoidCallback onClose;
+
+  const _CloseButton({required this.onClose});
+
+  @override
+  Widget build(BuildContext context) {
+    return Tooltip(
+      message: 'Hide Now Playing',
+      child: InkWell(
+        onTap: onClose,
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 2),
+          child: Text(
+            '×',
+            style: TextStyle(
+              fontSize: 14,
+              height: 1.2,
+              color: TerminalColors.of(context).textDim,
             ),
-          ],
+          ),
         ),
       ),
     );
@@ -130,80 +119,41 @@ class NowPlayingPanel extends StatelessWidget {
 
 class _Hero extends StatelessWidget {
   final Track track;
-  final double width;
+  final double artSize;
 
-  const _Hero({required this.track, required this.width});
-
-  @override
-  Widget build(BuildContext context) {
-    final scheme = Theme.of(context).colorScheme;
-    return Padding(
-      padding: const EdgeInsets.fromLTRB(16, 16, 16, 4),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          AlbumArt(size: width - 32, radius: 10, track: track),
-          const SizedBox(height: 14),
-          Text(
-            track.title,
-            maxLines: 2,
-            overflow: TextOverflow.ellipsis,
-            style: TextStyle(
-              fontSize: 15,
-              fontWeight: FontWeight.w700,
-              height: 1.25,
-              color: scheme.onSurface,
-            ),
-          ),
-          const SizedBox(height: 3),
-          Text(
-            '${track.artist}  ·  ${track.album}',
-            maxLines: 1,
-            overflow: TextOverflow.ellipsis,
-            style: TextStyle(fontSize: 12.5, color: scheme.onSurfaceVariant),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-class _UpNextHeader extends StatelessWidget {
-  final int position;
-  final int count;
-
-  const _UpNextHeader({required this.position, required this.count});
+  const _Hero({required this.track, required this.artSize});
 
   @override
   Widget build(BuildContext context) {
-    final scheme = Theme.of(context).colorScheme;
-    return Container(
-      margin: const EdgeInsets.only(top: 8),
-      padding: const EdgeInsets.fromLTRB(16, 10, 16, 4),
-      decoration: BoxDecoration(
-        border: Border(top: BorderSide(color: scheme.outline)),
-      ),
-      child: Row(
-        children: [
-          Text(
-            'Up next',
-            style: TextStyle(
-              fontSize: 12,
-              fontWeight: FontWeight.w600,
-              color: scheme.onSurface,
-            ),
+    final c = TerminalColors.of(context);
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        AlbumArt(size: artSize, track: track),
+        const SizedBox(height: 14),
+        Text(
+          track.title,
+          maxLines: 2,
+          overflow: TextOverflow.ellipsis,
+          style: const TextStyle(
+            fontSize: 16,
+            fontWeight: FontWeight.w700,
+            height: 1.35,
           ),
-          const Spacer(),
-          Text(
-            '${position + 1} of $count',
-            style: TextStyle(
-              fontSize: 11.5,
-              fontFeatures: const [FontFeature.tabularFigures()],
-              color: scheme.onSurfaceVariant,
-            ),
-          ),
-        ],
-      ),
+        ),
+        Text(
+          track.artist,
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
+          style: TextStyle(color: c.text2),
+        ),
+        Text(
+          track.album,
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
+          style: TextStyle(color: c.textDim),
+        ),
+      ],
     );
   }
 }

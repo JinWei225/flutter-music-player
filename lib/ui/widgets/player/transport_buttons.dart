@@ -2,12 +2,20 @@ import 'package:flutter/material.dart' hide RepeatMode;
 import 'package:provider/provider.dart';
 
 import '../../../core/player/player_model.dart';
+import '../../theme.dart';
+import '../terminal_widgets.dart';
 
-/// Round primary-coloured play/pause control. Sized by the caller: 40 in the
-/// player bar, 66 on the phone sheet.
+// The transport as mono glyphs: `⤮  |◂  ❚❚  ▸|  ↻`. Shuffle, repeat and the
+// pause bars are not in JetBrains Mono, so those are square Material icons
+// and a drawn glyph instead.
+
+/// Accent-filled square block: `▶` while paused, `❚❚` while playing. Sized
+/// by the caller: a compact block in the player bar, 88×52 on the phone
+/// sheet, 44×44 in the mini player.
 class PlayPauseButton extends StatelessWidget {
-  final double diameter;
-  final double iconSize;
+  final double width;
+  final double height;
+  final double glyphSize;
 
   /// Mentions the Space shortcut in the tooltip; only true where a keyboard
   /// is likely.
@@ -15,32 +23,42 @@ class PlayPauseButton extends StatelessWidget {
 
   const PlayPauseButton({
     super.key,
-    this.diameter = 40,
-    this.iconSize = 24,
+    this.width = 50,
+    this.height = 30,
+    this.glyphSize = 13,
     this.showShortcut = false,
   });
 
   @override
   Widget build(BuildContext context) {
-    final scheme = Theme.of(context).colorScheme;
+    final c = TerminalColors.of(context);
     final player = context.watch<PlayerModel>();
     final enabled = player.hasTrack;
     final verb = player.isPlaying ? 'Pause' : 'Play';
+    final fg = enabled ? c.background : c.textDim;
+
     return Tooltip(
       message: showShortcut ? '$verb (Space)' : verb,
       child: Material(
-        color: enabled ? scheme.primary : scheme.surfaceContainerHighest,
-        shape: const CircleBorder(),
+        color: enabled ? c.accent : c.selection,
         child: InkWell(
-          customBorder: const CircleBorder(),
           onTap: enabled ? player.togglePlayPause : null,
+          hoverColor: Colors.white.withValues(alpha: 0.08),
           child: SizedBox(
-            width: diameter,
-            height: diameter,
-            child: Icon(
-              player.isPlaying ? Icons.pause_rounded : Icons.play_arrow_rounded,
-              size: iconSize,
-              color: enabled ? scheme.onPrimary : scheme.onSurfaceVariant,
+            width: width,
+            height: height,
+            child: Center(
+              child: player.isPlaying
+                  ? PauseGlyph(size: glyphSize, color: fg)
+                  : Text(
+                      '▶',
+                      style: TextStyle(
+                        fontSize: glyphSize,
+                        height: 1.2,
+                        fontWeight: FontWeight.w700,
+                        color: fg,
+                      ),
+                    ),
             ),
           ),
         ),
@@ -49,111 +67,149 @@ class PlayPauseButton extends StatelessWidget {
   }
 }
 
-/// Previous / next. [prominent] draws the icon in the foreground colour at
-/// normal density, for the phone sheet where it is a primary control.
+/// Previous / next as `|◂` and `▸|`. [outlined] boxes them, for the phone
+/// sheet where they are primary controls.
 class SkipButton extends StatelessWidget {
   final bool forward;
-  final double size;
-  final bool prominent;
+  final bool outlined;
+  final double? width;
+  final double? height;
+  final double fontSize;
 
-  const SkipButton.previous({super.key, this.size = 26, this.prominent = false})
-    : forward = false;
-  const SkipButton.next({super.key, this.size = 26, this.prominent = false})
-    : forward = true;
+  const SkipButton.previous({
+    super.key,
+    this.outlined = false,
+    this.width,
+    this.height,
+    this.fontSize = 13,
+  }) : forward = false;
+
+  const SkipButton.next({
+    super.key,
+    this.outlined = false,
+    this.width,
+    this.height,
+    this.fontSize = 13,
+  }) : forward = true;
 
   @override
   Widget build(BuildContext context) {
-    final scheme = Theme.of(context).colorScheme;
+    final c = TerminalColors.of(context);
     final player = context.watch<PlayerModel>();
-    return PlayerIconButton(
-      icon: forward ? Icons.skip_next_rounded : Icons.skip_previous_rounded,
+    final enabled = player.hasTrack;
+    return GlyphButton(
       tooltip: forward ? 'Next' : 'Previous',
-      size: size,
-      compact: !prominent,
-      color: prominent ? scheme.onSurface : null,
-      onPressed: player.hasTrack
-          ? (forward ? player.next : player.previous)
-          : null,
+      outlined: outlined,
+      width: width,
+      height: height,
+      onPressed: enabled ? (forward ? player.next : player.previous) : null,
+      child: Text(
+        forward ? '▸|' : '|◂',
+        style: TextStyle(
+          fontSize: fontSize,
+          color: enabled ? c.text : c.textFaint,
+        ),
+      ),
     );
   }
 }
 
 class ShuffleButton extends StatelessWidget {
-  final double size;
-  final bool compact;
+  /// Square tap target; null keeps the compact padded size of the bar.
+  final double? extent;
+  final double glyphSize;
 
-  const ShuffleButton({super.key, this.size = 20, this.compact = true});
+  const ShuffleButton({super.key, this.extent, this.glyphSize = 15});
 
   @override
   Widget build(BuildContext context) {
+    final c = TerminalColors.of(context);
     final player = context.watch<PlayerModel>();
-    return PlayerIconButton(
-      icon: Icons.shuffle_rounded,
+    return GlyphButton(
       tooltip: player.shuffle ? 'Shuffle: on' : 'Shuffle: off',
-      active: player.shuffle,
-      size: size,
-      compact: compact,
+      width: extent,
+      height: extent,
       onPressed: player.toggleShuffle,
+      child: ShuffleGlyph(
+        size: glyphSize,
+        color: player.shuffle ? c.accent : c.textDim,
+      ),
     );
   }
 }
 
 class RepeatButton extends StatelessWidget {
-  final double size;
-  final bool compact;
+  final double? extent;
+  final double glyphSize;
 
-  const RepeatButton({super.key, this.size = 20, this.compact = true});
+  const RepeatButton({super.key, this.extent, this.glyphSize = 15});
 
   @override
   Widget build(BuildContext context) {
+    final c = TerminalColors.of(context);
     final player = context.watch<PlayerModel>();
     final (icon, tooltip) = switch (player.repeat) {
-      RepeatMode.off => (Icons.repeat_rounded, 'Repeat: off'),
-      RepeatMode.all => (Icons.repeat_rounded, 'Repeat: list'),
-      RepeatMode.one => (Icons.repeat_one_rounded, 'Repeat: one'),
+      RepeatMode.off => (Icons.repeat_sharp, 'Repeat: off'),
+      RepeatMode.all => (Icons.repeat_sharp, 'Repeat: list'),
+      RepeatMode.one => (Icons.repeat_one_sharp, 'Repeat: one'),
     };
-    return PlayerIconButton(
-      icon: icon,
+    return GlyphButton(
       tooltip: tooltip,
-      active: player.repeat != RepeatMode.off,
-      size: size,
-      compact: compact,
+      width: extent,
+      height: extent,
       onPressed: player.cycleRepeat,
+      child: Icon(
+        icon,
+        size: glyphSize,
+        color: player.repeat == RepeatMode.off ? c.textDim : c.accent,
+      ),
     );
   }
 }
 
-/// Icon button in the player's muted style; [active] lights it in the accent.
-class PlayerIconButton extends StatelessWidget {
-  final IconData icon;
+/// A flat, square button around a glyph, optionally outlined. Without a
+/// [width]/[height] it pads the glyph like the player bar's text buttons.
+class GlyphButton extends StatelessWidget {
   final String tooltip;
   final VoidCallback? onPressed;
-  final bool active;
-  final bool compact;
-  final double size;
-  final Color? color;
+  final Widget child;
+  final bool outlined;
+  final double? width;
+  final double? height;
 
-  const PlayerIconButton({
+  const GlyphButton({
     super.key,
-    required this.icon,
     required this.tooltip,
     required this.onPressed,
-    this.active = false,
-    this.compact = true,
-    this.size = 20,
-    this.color,
+    required this.child,
+    this.outlined = false,
+    this.width,
+    this.height,
   });
 
   @override
   Widget build(BuildContext context) {
-    final scheme = Theme.of(context).colorScheme;
-    return IconButton(
-      onPressed: onPressed,
-      icon: Icon(icon, size: size),
-      tooltip: tooltip,
-      visualDensity: compact ? VisualDensity.compact : null,
-      color: active ? scheme.primary : (color ?? scheme.onSurfaceVariant),
-      disabledColor: scheme.onSurfaceVariant.withValues(alpha: 0.35),
+    final c = TerminalColors.of(context);
+    return Tooltip(
+      message: tooltip,
+      child: Material(
+        type: MaterialType.transparency,
+        shape: outlined
+            ? RoundedRectangleBorder(side: BorderSide(color: c.borderStrong))
+            : null,
+        child: InkWell(
+          onTap: onPressed,
+          child: Container(
+            width: width,
+            height: height,
+            padding: width == null
+                ? const EdgeInsets.symmetric(horizontal: 10, vertical: 6)
+                : null,
+            alignment: Alignment.center,
+            child: child,
+          ),
+        ),
+      ),
     );
   }
 }

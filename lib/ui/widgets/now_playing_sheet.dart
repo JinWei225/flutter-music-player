@@ -1,12 +1,18 @@
-import 'package:flutter/material.dart';
+import 'dart:math' as math;
+
+import 'package:flutter/material.dart' hide RepeatMode;
 import 'package:provider/provider.dart';
 
 import '../../core/player/player_model.dart';
+import '../theme.dart';
 import 'album_art.dart';
+import 'edit_track_info_dialog.dart';
 import 'player/queue_list.dart';
 import 'player/seek_bar.dart';
 import 'player/transport_buttons.dart';
 import 'player/volume_control.dart';
+import 'terminal_widgets.dart';
+import 'track_row.dart' show showTrackMenu, TrackAction;
 
 /// Full-screen player for compact layouts, where the bottom bar only has room
 /// for a mini player. Carries every control the desktop player bar has:
@@ -18,42 +24,71 @@ class NowPlayingSheet extends StatelessWidget {
     context: context,
     isScrollControlled: true,
     useSafeArea: true,
-    backgroundColor: Colors.transparent,
     builder: (_) => const NowPlayingSheet(),
   );
 
   @override
   Widget build(BuildContext context) {
-    final scheme = Theme.of(context).colorScheme;
+    final c = TerminalColors.of(context);
     final player = context.watch<PlayerModel>();
     final track = player.currentTrack;
+    final edit = track == null ? null : editTrackAction(context, track);
 
     // Material rather than a decorated Container: the queue rows paint their
     // ink on the nearest Material ancestor.
     return Material(
-      color: Theme.of(context).scaffoldBackgroundColor,
-      borderRadius: const BorderRadius.vertical(top: Radius.circular(18)),
-      clipBehavior: Clip.antiAlias,
+      color: c.background,
       child: SizedBox(
-        height: MediaQuery.sizeOf(context).height * 0.92,
+        height: double.infinity,
         child: Column(
           children: [
-            // Drag handle
-            Container(
-              width: 40,
-              height: 4,
-              margin: const EdgeInsets.symmetric(vertical: 10),
-              decoration: BoxDecoration(
-                color: scheme.onSurfaceVariant.withValues(alpha: 0.4),
-                borderRadius: BorderRadius.circular(2),
+            Padding(
+              padding: const EdgeInsets.fromLTRB(8, 8, 8, 0),
+              child: Row(
+                children: [
+                  _BarButton(
+                    tooltip: 'Close Now Playing',
+                    onPressed: () => Navigator.of(context).maybePop(),
+                    child: Text(
+                      '▾',
+                      style: TextStyle(fontSize: 16, color: c.text2),
+                    ),
+                  ),
+                  Expanded(
+                    child: Text(
+                      '┤ now playing ├',
+                      textAlign: TextAlign.center,
+                      style: TextStyle(fontSize: 12, color: c.textDim),
+                    ),
+                  ),
+                  if (edit != null)
+                    Builder(
+                      builder: (context) => _BarButton(
+                        tooltip: 'Track options',
+                        onPressed: () async {
+                          final box = context.findRenderObject() as RenderBox;
+                          final choice = await showTrackMenu(
+                            context,
+                            box.localToGlobal(Offset(0, box.size.height)),
+                            playNext: false,
+                            edit: true,
+                          );
+                          if (choice == TrackAction.edit) edit();
+                        },
+                        child: Text('⋯', style: TextStyle(color: c.text2)),
+                      ),
+                    )
+                  else
+                    const SizedBox(width: 44),
+                ],
               ),
             ),
             Expanded(
               child: track == null
                   ? Center(
                       child: Text(
-                        'Nothing playing',
-                        style: TextStyle(color: scheme.onSurfaceVariant),
+                        'nothing playing',
+                        style: TextStyle(color: c.textDim),
                       ),
                     )
                   : _Body(player: player),
@@ -65,6 +100,28 @@ class NowPlayingSheet extends StatelessWidget {
   }
 }
 
+/// A 44×44 glyph button for the sheet's top bar.
+class _BarButton extends StatelessWidget {
+  final String tooltip;
+  final VoidCallback onPressed;
+  final Widget child;
+
+  const _BarButton({
+    required this.tooltip,
+    required this.onPressed,
+    required this.child,
+  });
+
+  @override
+  Widget build(BuildContext context) => Tooltip(
+    message: tooltip,
+    child: InkWell(
+      onTap: onPressed,
+      child: SizedBox(width: 44, height: 44, child: Center(child: child)),
+    ),
+  );
+}
+
 class _Body extends StatelessWidget {
   final PlayerModel player;
 
@@ -72,102 +129,103 @@ class _Body extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final scheme = Theme.of(context).colorScheme;
+    final c = TerminalColors.of(context);
     final track = player.currentTrack!;
-    final artSize = MediaQuery.sizeOf(context).width * 0.62;
+    final artSize = math.min(300.0, MediaQuery.sizeOf(context).width - 32);
     final queueLength = player.queueInPlayOrder.length;
+    final repeat = switch (player.repeat) {
+      RepeatMode.off => 'off',
+      RepeatMode.all => 'list',
+      RepeatMode.one => 'one',
+    };
 
     return SingleChildScrollView(
-      padding: const EdgeInsets.only(bottom: 24),
+      padding: const EdgeInsets.fromLTRB(16, 6, 16, 20),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          Padding(
-            padding: const EdgeInsets.fromLTRB(24, 8, 24, 0),
-            child: Column(
-              children: [
-                AlbumArt(size: artSize, radius: 14, track: track),
-                const SizedBox(height: 28),
-                Text(
-                  track.title,
-                  textAlign: TextAlign.center,
-                  maxLines: 2,
-                  overflow: TextOverflow.ellipsis,
-                  style: TextStyle(
-                    fontSize: 21,
-                    fontWeight: FontWeight.w700,
-                    color: scheme.onSurface,
-                  ),
-                ),
-                const SizedBox(height: 6),
-                Text(
-                  '${track.artist}  ·  ${track.album}',
-                  textAlign: TextAlign.center,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: TextStyle(
-                    fontSize: 14,
-                    color: scheme.onSurfaceVariant,
-                  ),
-                ),
-                const SizedBox(height: 22),
-                const SeekBar(),
-                const SizedBox(height: 8),
-                const Row(
-                  mainAxisAlignment: MainAxisAlignment.center,
+          Center(child: AlbumArt(size: artSize, track: track)),
+          const SizedBox(height: 14),
+          Text(
+            track.title,
+            maxLines: 2,
+            overflow: TextOverflow.ellipsis,
+            style: const TextStyle(
+              fontSize: 20,
+              fontWeight: FontWeight.w700,
+              height: 1.3,
+            ),
+          ),
+          Text(
+            track.artist,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: TextStyle(color: c.text2),
+          ),
+          Text(
+            track.album,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: TextStyle(fontSize: 12, color: c.textDim),
+          ),
+          const SizedBox(height: 10),
+          const SeekBar(remaining: true),
+          const SizedBox(height: 14),
+          const Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              ShuffleButton(extent: 44, glyphSize: 20),
+              SkipButton.previous(
+                outlined: true,
+                width: 56,
+                height: 52,
+                fontSize: 15,
+              ),
+              PlayPauseButton(width: 88, height: 52, glyphSize: 17),
+              SkipButton.next(
+                outlined: true,
+                width: 56,
+                height: 52,
+                fontSize: 15,
+              ),
+              RepeatButton(extent: 44, glyphSize: 20),
+            ],
+          ),
+          const SizedBox(height: 14),
+          Row(
+            children: [
+              const Expanded(child: VolumeControl()),
+              const SizedBox(width: 16),
+              Text.rich(
+                TextSpan(
+                  text: 'repeat ',
+                  style: TextStyle(fontSize: 12, color: c.textDim),
                   children: [
-                    ShuffleButton(size: 22, compact: false),
-                    SizedBox(width: 8),
-                    SkipButton.previous(size: 38, prominent: true),
-                    SizedBox(width: 6),
-                    PlayPauseButton(diameter: 66, iconSize: 36),
-                    SizedBox(width: 6),
-                    SkipButton.next(size: 38, prominent: true),
-                    SizedBox(width: 8),
-                    RepeatButton(size: 22, compact: false),
+                    TextSpan(
+                      text: repeat,
+                      style: TextStyle(
+                        color: player.repeat == RepeatMode.off
+                            ? c.text
+                            : c.accent,
+                      ),
+                    ),
                   ],
                 ),
-                const SizedBox(height: 12),
-                const VolumeControl(),
-                const SizedBox(height: 10),
-              ],
-            ),
+              ),
+            ],
           ),
-          const Divider(height: 24),
-          Padding(
-            padding: const EdgeInsets.fromLTRB(24, 0, 24, 6),
-            child: Row(
-              children: [
-                Icon(
-                  Icons.queue_music_rounded,
-                  size: 18,
-                  color: scheme.onSurfaceVariant,
-                ),
-                const SizedBox(width: 8),
-                Text(
-                  'Queue',
-                  style: TextStyle(
-                    fontSize: 14,
-                    fontWeight: FontWeight.w700,
-                    color: scheme.onSurface,
-                  ),
-                ),
-                const SizedBox(width: 8),
-                Text(
-                  '$queueLength songs',
-                  style: TextStyle(
-                    fontSize: 12,
-                    color: scheme.onSurfaceVariant,
-                  ),
-                ),
-              ],
-            ),
+          const SizedBox(height: 14),
+          SectionRule(
+            label: 'UP NEXT',
+            trailing: '${player.currentQueuePosition + 1}/$queueLength',
           ),
+          const SizedBox(height: 2),
           // Inside a scroll view already, so the list must size to its content.
           const QueueList(
             shrinkWrap: true,
-            horizontalPadding: 24,
+            horizontalPadding: 0,
             padding: EdgeInsets.zero,
+            rowMinHeight: 44,
           ),
         ],
       ),
