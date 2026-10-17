@@ -3,6 +3,7 @@ import 'package:provider/provider.dart';
 
 import '../breakpoints.dart';
 import '../theme.dart';
+import 'command_prompt.dart';
 import 'terminal_widgets.dart';
 
 /// True where the shell uses the phone layout. Pages ask this rather than
@@ -29,24 +30,39 @@ class PhoneTopLine extends StatelessWidget {
       padding: const EdgeInsets.fromLTRB(16, 8, 4, 2),
       child: Row(
         children: [
+          // The whole line opens the command prompt: `mewsic ~/songs ❯`.
           Expanded(
-            child: Text.rich(
-              TextSpan(
-                text: 'mewsic ',
-                style: TextStyle(color: c.accent, fontWeight: FontWeight.w700),
-                children: [
-                  TextSpan(
-                    text: path,
-                    style: TextStyle(
-                      color: c.textDim,
-                      fontWeight: FontWeight.w400,
+            child: Tooltip(
+              message: 'Play by name',
+              child: InkWell(
+                onTap: () => CommandSheet.show(context),
+                child: Container(
+                  constraints: const BoxConstraints(minHeight: 44),
+                  alignment: Alignment.centerLeft,
+                  child: Text.rich(
+                    TextSpan(
+                      text: 'mewsic ',
+                      style: TextStyle(
+                        color: c.accent,
+                        fontWeight: FontWeight.w700,
+                      ),
+                      children: [
+                        TextSpan(
+                          text: '$path ',
+                          style: TextStyle(
+                            color: c.textDim,
+                            fontWeight: FontWeight.w400,
+                          ),
+                        ),
+                        const TextSpan(text: '❯'),
+                      ],
                     ),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(fontSize: 15),
                   ),
-                ],
+                ),
               ),
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-              style: const TextStyle(fontSize: 15),
             ),
           ),
           ?trailing,

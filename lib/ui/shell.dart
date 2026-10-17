@@ -10,6 +10,7 @@ import 'pages/album_detail_page.dart';
 import 'pages/albums_page.dart';
 import 'pages/all_songs_page.dart';
 import 'theme.dart';
+import 'widgets/command_prompt.dart';
 import 'widgets/mini_player.dart';
 import 'widgets/now_playing_panel.dart';
 import 'widgets/player_bar.dart';
@@ -41,9 +42,19 @@ class _AppShellState extends State<AppShell> {
   /// having to click anything first.
   final FocusNode _focusNode = FocusNode();
 
+  /// The header's command prompt (desktop only). The shell owns it so it
+  /// can focus it on launch and on `/`, and leave Space alone while it is
+  /// being typed into.
+  final FocusNode _promptFocus = FocusNode(debugLabel: 'command prompt');
+
+  /// The prompt takes focus once, on the first wide build, so a freshly
+  /// opened app can be typed into straight away.
+  bool _promptFocusedOnLaunch = false;
+
   @override
   void dispose() {
     _focusNode.dispose();
+    _promptFocus.dispose();
     super.dispose();
   }
 
@@ -77,6 +88,15 @@ class _AppShellState extends State<AppShell> {
 
   KeyEventResult _onKey(FocusNode node, KeyEvent event) {
     if (event is! KeyDownEvent) return KeyEventResult.ignored;
+    // Keys typed into the prompt bubble up here too; they are text, not
+    // shortcuts. (The prompt itself turns Space into play/pause while it
+    // is empty.)
+    if (_promptFocus.hasFocus) return KeyEventResult.ignored;
+    if (event.logicalKey == LogicalKeyboardKey.slash &&
+        _promptFocus.context != null) {
+      _promptFocus.requestFocus();
+      return KeyEventResult.handled;
+    }
     if (event.logicalKey != LogicalKeyboardKey.space) {
       return KeyEventResult.ignored;
     }
@@ -106,6 +126,12 @@ class _AppShellState extends State<AppShell> {
     final medium = width < kMediumBreakpoint;
     final open = _nowPlayingOpen(width, player);
     final album = _section == _Section.albums ? _currentOpenAlbum() : null;
+    if (!_promptFocusedOnLaunch) {
+      _promptFocusedOnLaunch = true;
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted && _promptFocus.context != null) _promptFocus.requestFocus();
+      });
+    }
 
     // Panels sit 16 apart; a panel's label rides up into the gap above it,
     // so vertical gaps are measured to the border, not the widget's top.
@@ -143,7 +169,13 @@ class _AppShellState extends State<AppShell> {
           children: [
             Padding(
               padding: const EdgeInsets.fromLTRB(gap, 14, gap, 0),
-              child: _HeaderLine(path: _path(album)),
+              child: _HeaderLine(
+                path: _path(album),
+                prompt: CommandPrompt(
+                  focusNode: _promptFocus,
+                  onFinished: () => _focusNode.requestFocus(),
+                ),
+              ),
             ),
             const SizedBox(height: vGap),
             Expanded(
@@ -289,10 +321,12 @@ class _SlideOver extends StatelessWidget {
 }
 
 /// `mewsic ~/Music/albums            17 songs · 3 albums`
+/// `mewsic ~/Music/albums  ❯ _                       17 songs · 3 albums`
 class _HeaderLine extends StatelessWidget {
   final String path;
+  final Widget prompt;
 
-  const _HeaderLine({required this.path});
+  const _HeaderLine({required this.path, required this.prompt});
 
   @override
   Widget build(BuildContext context) {
@@ -307,10 +341,13 @@ class _HeaderLine extends StatelessWidget {
             style: TextStyle(color: c.accent, fontWeight: FontWeight.w700),
           ),
           const SizedBox(width: 10),
-          Expanded(
+          ConstrainedBox(
+            constraints: const BoxConstraints(maxWidth: 280),
             child: Text(path, maxLines: 1, overflow: TextOverflow.ellipsis),
           ),
-          const SizedBox(width: 10),
+          const SizedBox(width: 16),
+          Expanded(child: prompt),
+          const SizedBox(width: 16),
           Text(
             '${library.trackCount} songs · ${library.albums.length} albums',
           ),

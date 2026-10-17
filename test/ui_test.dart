@@ -7,6 +7,7 @@ import 'package:custom_music_player/platform/settings_store.dart';
 import 'package:custom_music_player/ui/pages/all_songs_page.dart';
 import 'package:custom_music_player/ui/shell.dart';
 import 'package:custom_music_player/ui/theme.dart';
+import 'package:custom_music_player/ui/widgets/command_prompt.dart';
 import 'package:custom_music_player/ui/widgets/edit_track_info_dialog.dart';
 import 'package:custom_music_player/ui/widgets/mini_player.dart';
 import 'package:custom_music_player/ui/widgets/now_playing_panel.dart';
@@ -683,7 +684,7 @@ void main() {
 
       await tester.tap(find.text('albums'));
       await tester.pumpAndSettle();
-      expect(find.text('mewsic ~/albums'), findsOneWidget);
+      expect(find.text('mewsic ~/albums ❯'), findsOneWidget);
 
       await tester.tap(find.text('AIR - EP').first);
       await tester.pumpAndSettle();
@@ -692,6 +693,163 @@ void main() {
       await tester.tap(find.text('play all'));
       await tester.pumpAndSettle();
       expect(player.currentTrack?.title, 'Air');
+    });
+  });
+  group('command prompt', () {
+    Finder prompt() => find.descendant(
+      of: find.byType(CommandPrompt),
+      matching: find.byType(TextField),
+    );
+    bool promptFocused(WidgetTester tester) =>
+        tester.widget<TextField>(prompt()).focusNode!.hasFocus;
+
+    testWidgets('is focused on launch and plays an album on Enter', (
+      tester,
+    ) async {
+      await pumpApp(tester);
+      expect(promptFocused(tester), isTrue);
+
+      await tester.enterText(prompt(), 'kill my doubt');
+      await tester.pumpAndSettle();
+      expect(find.byType(CommandResults), findsOneWidget);
+
+      await tester.sendKeyEvent(LogicalKeyboardKey.enter);
+      await tester.pumpAndSettle();
+      expect(player.isPlaying, isTrue);
+      expect(player.queueInPlayOrder.length, 6);
+      expect(
+        player.queueInPlayOrder.map((t) => t.album).toSet(),
+        {'KILL MY DOUBT - EP'},
+      );
+
+      // Done: the prompt clears and lets go, so Space is play/pause again.
+      expect(find.byType(CommandResults), findsNothing);
+      expect(promptFocused(tester), isFalse);
+      await tester.sendKeyEvent(LogicalKeyboardKey.space);
+      await tester.pumpAndSettle();
+      expect(player.isPlaying, isFalse);
+    });
+
+    testWidgets('shuffle <artist> plays all of theirs shuffled', (
+      tester,
+    ) async {
+      await pumpApp(tester);
+
+      await tester.enterText(prompt(), 'kew shuffle nayeon');
+      await tester.pumpAndSettle();
+      await tester.sendKeyEvent(LogicalKeyboardKey.enter);
+      await tester.pumpAndSettle();
+
+      expect(player.shuffle, isTrue);
+      expect(player.queueInPlayOrder.length, 7);
+      expect(player.queueInPlayOrder.map((t) => t.album).toSet(), {'NA'});
+    });
+
+    testWidgets('next <song> queues it behind the current track', (
+      tester,
+    ) async {
+      await pumpApp(tester);
+      library.setSort(SortField.title, SortDirection.ascending);
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Air').first);
+      await tester.pumpAndSettle();
+      // Clicking the list let go of the prompt; / takes it back.
+      expect(promptFocused(tester), isFalse);
+      await tester.sendKeyEvent(LogicalKeyboardKey.slash);
+      await tester.pumpAndSettle();
+      expect(promptFocused(tester), isTrue);
+
+      await tester.enterText(prompt(), 'next cake');
+      await tester.pumpAndSettle();
+      await tester.sendKeyEvent(LogicalKeyboardKey.enter);
+      await tester.pumpAndSettle();
+
+      expect(player.currentTrack?.title, 'Air');
+      expect(
+        player.queueInPlayOrder[player.currentQueuePosition + 1].title,
+        'CAKE',
+      );
+      expect(find.text('Playing next: CAKE'), findsOneWidget);
+    });
+
+    testWidgets('Space is play/pause while empty and a space once typing', (
+      tester,
+    ) async {
+      await pumpApp(tester);
+      await tester.tap(find.text('ABCD').first);
+      await tester.pumpAndSettle();
+      await tester.sendKeyEvent(LogicalKeyboardKey.slash);
+      await tester.pumpAndSettle();
+      expect(player.isPlaying, isTrue);
+
+      await tester.sendKeyEvent(LogicalKeyboardKey.space);
+      await tester.pumpAndSettle();
+      expect(player.isPlaying, isFalse);
+
+      await tester.enterText(prompt(), 'kill');
+      await tester.sendKeyEvent(LogicalKeyboardKey.space);
+      await tester.pumpAndSettle();
+      expect(player.isPlaying, isFalse, reason: 'Space was typed, not run');
+    });
+
+    testWidgets('arrows pick another match and Escape backs out', (
+      tester,
+    ) async {
+      await pumpApp(tester);
+
+      // "air" is the song first, then the album.
+      await tester.enterText(prompt(), 'air');
+      await tester.pumpAndSettle();
+      await tester.sendKeyEvent(LogicalKeyboardKey.arrowDown);
+      await tester.pumpAndSettle();
+      await tester.sendKeyEvent(LogicalKeyboardKey.enter);
+      await tester.pumpAndSettle();
+      expect(player.currentTrack?.title, 'Air');
+      expect(player.queueInPlayOrder.length, 4);
+
+      await tester.sendKeyEvent(LogicalKeyboardKey.slash);
+      await tester.enterText(prompt(), 'nayeon');
+      await tester.pumpAndSettle();
+      expect(find.byType(CommandResults), findsOneWidget);
+      await tester.sendKeyEvent(LogicalKeyboardKey.escape);
+      await tester.pumpAndSettle();
+      expect(tester.widget<TextField>(prompt()).controller!.text, isEmpty);
+      expect(find.byType(CommandResults), findsNothing);
+      expect(promptFocused(tester), isTrue);
+      await tester.sendKeyEvent(LogicalKeyboardKey.escape);
+      await tester.pumpAndSettle();
+      expect(promptFocused(tester), isFalse);
+    });
+
+    testWidgets('on a phone the top line opens it as a sheet', (
+      tester,
+    ) async {
+      await pumpApp(tester, size: const Size(400, 860));
+      expect(find.byType(CommandPrompt), findsNothing);
+
+      await tester.tap(find.text('mewsic ~/songs ❯'));
+      await tester.pumpAndSettle();
+      expect(find.byType(CommandSheet), findsOneWidget);
+
+      await tester.enterText(
+        find.descendant(
+          of: find.byType(CommandSheet),
+          matching: find.byType(TextField),
+        ),
+        'kill my doubt',
+      );
+      await tester.pumpAndSettle();
+      await tester.tap(
+        find.descendant(
+          of: find.byType(CommandSheet),
+          matching: find.text('album'),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      expect(find.byType(CommandSheet), findsNothing);
+      expect(player.queueInPlayOrder.length, 6);
+      expect(player.isPlaying, isTrue);
     });
   });
 }
