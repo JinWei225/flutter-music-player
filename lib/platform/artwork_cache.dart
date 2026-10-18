@@ -1,5 +1,4 @@
 import 'dart:io';
-import 'dart:typed_data';
 import 'dart:ui' as ui;
 
 import 'package:flutter/foundation.dart';
@@ -52,8 +51,12 @@ class ArtworkCache {
     final key = track.albumKey;
     final known = _byAlbum[key];
     if (known != null) return Future.value(known);
-    return _inFlight[key] ??=
-        _load(track, key).whenComplete(() => _inFlight.remove(key));
+    // A block body, not `=> _inFlight.remove(key)`: that would return the
+    // removed future -- this one -- for whenComplete to wait on, and the load
+    // would never finish.
+    return _inFlight[key] ??= _load(track, key).whenComplete(() {
+      _inFlight.remove(key);
+    });
   }
 
   Future<Uri?> _load(Track track, String key) async {

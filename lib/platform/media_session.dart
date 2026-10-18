@@ -29,10 +29,26 @@ class MewsicAudioHandler extends BaseAudioHandler with SeekHandler {
   String? _artworkPendingFor;
 
   /// How long a new track waits for its cover before it is published without
-  /// one. A cover that arrives after its item is easily missed by the system
-  /// UI -- the notification keeps the app icon -- so it is worth a short wait,
-  /// but not an unbounded one.
+  /// one. Publishing it bare first would flash the app icon in the
+  /// notification until the cover lands, so it is worth a short wait, but not
+  /// an unbounded one.
   static const _artworkGrace = Duration(milliseconds: 1500);
+
+  /// The item the session should be showing. It can be ahead of
+  /// [mediaItem] while an update is held back by [_setMediaItem].
+  MediaItem? _item;
+
+  /// Time since an item last went out to the platform, and the timer of an
+  /// update waiting for its turn.
+  Stopwatch? _sinceSent;
+  Timer? _held;
+
+  /// Least time between two items sent to the platform. audio_service hands
+  /// each item to Android on a thread of its own, so two sent close together
+  /// can be applied in either order: a track's cover could be overwritten by
+  /// its own earlier, artless item, leaving the notification with the app
+  /// icon. Spacing them out keeps the last one sent the one that stays.
+  static const _mediaItemSpacing = Duration(milliseconds: 300);
 
   MewsicAudioHandler() {
     // Position/buffering changes come straight from the player.
@@ -80,7 +96,7 @@ class MewsicAudioHandler extends BaseAudioHandler with SeekHandler {
     final track = model?.currentTrack;
 
     if (track != null) {
-      final current = mediaItem.value;
+      final current = _item;
       if (current != null && current.id == track.path) {
         if (current.title != track.title ||
             current.artist != track.artist ||
@@ -88,14 +104,14 @@ class MewsicAudioHandler extends BaseAudioHandler with SeekHandler {
             current.duration != track.duration) {
           // Same file, new tags (Edit Info on the playing track): the cover is
           // unchanged, so keep whatever art has already been resolved.
-          mediaItem.add(_toMediaItem(track, artUri: current.artUri));
+          _setMediaItem(_toMediaItem(track, artUri: current.artUri));
         }
       } else if (_artworkPendingFor != track.path) {
         _publishWithArtwork(track);
       }
     } else {
       _artworkPendingFor = null;
-      if (mediaItem.value != null) mediaItem.add(null);
+      if (_item != null) _setMediaItem(null);
     }
 
     final playing = player.playing;
@@ -147,7 +163,7 @@ class MewsicAudioHandler extends BaseAudioHandler with SeekHandler {
       debugPrint('Could not resolve artwork for ${track.title}: $e');
     }
     if (_superseded(track)) return;
-    mediaItem.add(_toMediaItem(_latest(track), artUri: uri));
+    _setMediaItem(_toMediaItem(_latest(track), artUri: uri));
     if (!timedOut) return;
 
     try {
@@ -157,7 +173,29 @@ class MewsicAudioHandler extends BaseAudioHandler with SeekHandler {
       return;
     }
     if (_superseded(track)) return;
-    mediaItem.add(_toMediaItem(_latest(track), artUri: uri));
+    _setMediaItem(_toMediaItem(_latest(track), artUri: uri));
+  }
+
+  /// Makes [item] the session's item. It goes out at once unless another
+  /// went out less than [_mediaItemSpacing] ago; then it waits out the rest,
+  /// and only the newest of the items set meanwhile is sent.
+  void _setMediaItem(MediaItem? item) {
+    _item = item;
+    if (_held != null) return;
+    final since = _sinceSent?.elapsed;
+    if (since == null || since >= _mediaItemSpacing) {
+      _sendMediaItem();
+    } else {
+      _held = Timer(_mediaItemSpacing - since, () {
+        _held = null;
+        _sendMediaItem();
+      });
+    }
+  }
+
+  void _sendMediaItem() {
+    _sinceSent = Stopwatch()..start();
+    mediaItem.add(_item);
   }
 
   /// True once a skip has moved on from [track] while its cover was loading.
