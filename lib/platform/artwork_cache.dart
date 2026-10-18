@@ -1,4 +1,6 @@
 import 'dart:io';
+import 'dart:typed_data';
+import 'dart:ui' as ui;
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart' show rootBundle;
@@ -16,9 +18,17 @@ import '../core/models/track.dart';
 class ArtworkCache {
   static const _placeholderAsset = 'assets/album_placeholder.png';
 
+  /// Longest side of the cover handed to the session. The notification and
+  /// the OEM overlays built on it (Xiaomi's dynamic island) read the bitmap
+  /// out of the session metadata, and a full-size store cover can be too
+  /// large for them to take; they then show no art at all.
+  static const _maxSide = 512;
+
   /// Keyed by album so the file is written once for a whole album, not per
-  /// track. A null value records "already looked, found nothing".
-  final Map<String, Uri?> _byAlbum = {};
+  /// track. Only covers that were found are kept: a fresh purchase has none
+  /// until `mewsic-tagfix` embeds one, and remembering that miss would keep
+  /// the placeholder up for as long as the app stays alive.
+  final Map<String, Uri> _byAlbum = {};
 
   Directory? _dir;
   Uri? _placeholder;
@@ -36,7 +46,8 @@ class ArtworkCache {
   /// The track's real cover, or null when it has none.
   Future<Uri?> embeddedUriFor(Track track) async {
     final key = track.albumKey;
-    if (_byAlbum.containsKey(key)) return _byAlbum[key];
+    final known = _byAlbum[key];
+    if (known != null) return known;
 
     Uri? result;
     try {
@@ -50,7 +61,7 @@ class ArtworkCache {
           final file = File(
             '${dir.path}${Platform.pathSeparator}${key.hashCode}.img',
           );
-          await file.writeAsBytes(bytes, flush: true);
+          await file.writeAsBytes(await _shrink(bytes), flush: true);
           result = file.uri;
         }
       }
@@ -58,8 +69,41 @@ class ArtworkCache {
       debugPrint('Could not read artwork for ${track.title}: $e');
     }
 
-    _byAlbum[key] = result;
+    if (result != null) _byAlbum[key] = result;
     return result;
+  }
+
+  /// [bytes] scaled down to at most [_maxSide] on the longest side and
+  /// re-encoded as PNG. Covers already that small, and any the engine cannot
+  /// decode, are returned untouched.
+  static Future<Uint8List> _shrink(Uint8List bytes) async {
+    ui.ImmutableBuffer? buffer;
+    ui.ImageDescriptor? descriptor;
+    ui.Codec? codec;
+    ui.Image? image;
+    try {
+      buffer = await ui.ImmutableBuffer.fromUint8List(bytes);
+      descriptor = await ui.ImageDescriptor.encoded(buffer);
+      if (descriptor.width <= _maxSide && descriptor.height <= _maxSide) {
+        return bytes;
+      }
+      final landscape = descriptor.width >= descriptor.height;
+      codec = await descriptor.instantiateCodec(
+        targetWidth: landscape ? _maxSide : null,
+        targetHeight: landscape ? null : _maxSide,
+      );
+      image = (await codec.getNextFrame()).image;
+      final png = await image.toByteData(format: ui.ImageByteFormat.png);
+      return png?.buffer.asUint8List() ?? bytes;
+    } catch (e) {
+      debugPrint('Could not shrink artwork: $e');
+      return bytes;
+    } finally {
+      image?.dispose();
+      codec?.dispose();
+      descriptor?.dispose();
+      buffer?.dispose();
+    }
   }
 
   /// The shared fallback tile, unpacked from assets on first use.

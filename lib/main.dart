@@ -47,6 +47,10 @@ Future<void> main() async {
         androidNotificationIcon: 'drawable/ic_notification',
         androidNotificationOngoing: true,
         androidStopForegroundOnPause: true,
+        // Backstop for the art that reaches the notification: whatever its
+        // size, it is sampled down rather than decoded at full resolution.
+        artDownscaleWidth: 512,
+        artDownscaleHeight: 512,
       ),
     );
   }
