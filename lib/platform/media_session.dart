@@ -1,4 +1,7 @@
+import 'dart:async';
+
 import 'package:audio_service/audio_service.dart';
+import 'package:flutter/foundation.dart' show debugPrint;
 import 'package:just_audio/just_audio.dart';
 
 import '../core/models/track.dart';
@@ -19,10 +22,17 @@ class MewsicAudioHandler extends BaseAudioHandler with SeekHandler {
 
   PlayerModel? _model;
 
-  /// Art lookup is async, so the item is published without it first and
-  /// republished once resolved. Tracks which track that resolution was for, so
-  /// a slow read cannot attach the wrong cover after a skip.
+  /// Art lookup is async. A track is published once its cover is ready; only
+  /// a cover slower than [_artworkGrace] is attached afterwards. Tracks which
+  /// track that resolution was for, so a slow read cannot attach the wrong
+  /// cover after a skip.
   String? _artworkPendingFor;
+
+  /// How long a new track waits for its cover before it is published without
+  /// one. A cover that arrives after its item is easily missed by the system
+  /// UI -- the notification keeps the app icon -- so it is worth a short wait,
+  /// but not an unbounded one.
+  static const _artworkGrace = Duration(milliseconds: 1500);
 
   MewsicAudioHandler() {
     // Position/buffering changes come straight from the player.
@@ -71,20 +81,21 @@ class MewsicAudioHandler extends BaseAudioHandler with SeekHandler {
 
     if (track != null) {
       final current = mediaItem.value;
-      if (current == null || current.id != track.path) {
-        mediaItem.add(_toMediaItem(track, artUri: null));
-        _resolveArtwork(track);
-      } else if (current.title != track.title ||
-          current.artist != track.artist ||
-          current.album != track.album ||
-          current.duration != track.duration) {
-        // Same file, new tags (Edit Info on the playing track): the cover is
-        // unchanged, so keep whatever art has already been resolved.
-        mediaItem.add(_toMediaItem(track, artUri: current.artUri));
+      if (current != null && current.id == track.path) {
+        if (current.title != track.title ||
+            current.artist != track.artist ||
+            current.album != track.album ||
+            current.duration != track.duration) {
+          // Same file, new tags (Edit Info on the playing track): the cover is
+          // unchanged, so keep whatever art has already been resolved.
+          mediaItem.add(_toMediaItem(track, artUri: current.artUri));
+        }
+      } else if (_artworkPendingFor != track.path) {
+        _publishWithArtwork(track);
       }
-    } else if (mediaItem.value != null) {
-      mediaItem.add(null);
+    } else {
       _artworkPendingFor = null;
+      if (mediaItem.value != null) mediaItem.add(null);
     }
 
     final playing = player.playing;
@@ -116,16 +127,54 @@ class MewsicAudioHandler extends BaseAudioHandler with SeekHandler {
         ProcessingState.completed => AudioProcessingState.completed,
       };
 
-  /// Loads the cover in the background and republishes the item with it.
-  Future<void> _resolveArtwork(Track track) async {
+  /// Publishes [track] with its cover attached, so the system never sees the
+  /// item without art. A cover slower than [_artworkGrace] is attached once it
+  /// arrives instead.
+  Future<void> _publishWithArtwork(Track track) async {
     _artworkPendingFor = track.path;
-    final uri = await _artwork.uriFor(track);
+    final art = _artwork.uriFor(track);
+    // If a skip returns below before `art` is awaited again, its failure
+    // would otherwise surface as an unhandled error.
+    art.ignore();
 
-    // A skip may have landed while the file was being read.
-    if (_artworkPendingFor != track.path) return;
-    if (mediaItem.value?.id != track.path) return;
+    Uri? uri;
+    var timedOut = false;
+    try {
+      uri = await art.timeout(_artworkGrace);
+    } on TimeoutException {
+      timedOut = true;
+    } catch (e) {
+      debugPrint('Could not resolve artwork for ${track.title}: $e');
+    }
+    if (_superseded(track)) return;
+    mediaItem.add(_toMediaItem(_latest(track), artUri: uri));
+    if (!timedOut) return;
 
-    mediaItem.add(_toMediaItem(track, artUri: uri));
+    try {
+      uri = await art;
+    } catch (e) {
+      debugPrint('Could not resolve artwork for ${track.title}: $e');
+      return;
+    }
+    if (_superseded(track)) return;
+    mediaItem.add(_toMediaItem(_latest(track), artUri: uri));
+  }
+
+  /// True once a skip has moved on from [track] while its cover was loading.
+  bool _superseded(Track track) {
+    final stale = _artworkPendingFor != track.path ||
+        _model?.currentTrack?.path != track.path;
+    // Nothing else will publish this track if it comes back later while the
+    // marker still says it is in progress.
+    if (stale && _artworkPendingFor == track.path) _artworkPendingFor = null;
+    return stale;
+  }
+
+  /// [track] as the model holds it now: its tags may have been edited while
+  /// the cover was loading.
+  Track _latest(Track track) {
+    final now = _model?.currentTrack;
+    return now != null && now.path == track.path ? now : track;
   }
 
   static MediaItem _toMediaItem(Track track, {required Uri? artUri}) =>
