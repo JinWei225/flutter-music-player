@@ -74,14 +74,21 @@ jobs:
           if [[ "$GITHUB_REF_TYPE" != tag ]]; then
             VERSION="${INPUT_VERSION:-0.0.0-${GITHUB_SHA::7}}"
           fi
-          flutter build apk --release \
+          # One APK per CPU type: a single APK carrying the engine and app
+          # code for all three is about 55 MB, one is about 20 MB. Each gets
+          # versionCode ABI*1000 + build (arm64-v8a is 2xxx), still above the
+          # single APKs earlier releases shipped.
+          flutter build apk --release --split-per-abi \
             --build-name "$VERSION" --build-number "$BUILD_NUMBER"
-          mv build/app/outputs/flutter-apk/app-release.apk Mewsic-android.apk
+          for abi in arm64-v8a armeabi-v7a x86_64; do
+            mv "build/app/outputs/flutter-apk/app-$abi-release.apk" \
+              "Mewsic-android-$abi.apk"
+          done
 
       - uses: actions/upload-artifact@v4
         with:
           name: Mewsic-android
-          path: Mewsic-android.apk
+          path: Mewsic-android-*.apk
 
   linux:
     name: Linux bundle
@@ -132,6 +139,6 @@ jobs:
           tag_name: ${{ github.ref_type == 'tag' && github.ref_name || format('v{0}', inputs.version) }}
           target_commitish: ${{ github.sha }}
           files: |
-            Mewsic-android.apk
+            Mewsic-android-*.apk
             Mewsic-linux-x64.tar.gz
           generate_release_notes: true

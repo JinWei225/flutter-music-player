@@ -191,16 +191,19 @@ a GitHub Release (`.github/workflows/release.yml`):
 git tag v1.1.0 && git push origin v1.1.0
 ```
 
-A few minutes later the release page has `Mewsic-android.apk` and
+A few minutes later the release page has one APK per CPU type
+(`Mewsic-android-arm64-v8a.apk` for nearly every current phone, plus
+`armeabi-v7a` for older 32-bit ones and `x86_64` for emulators) and
 `Mewsic-linux-x64.tar.gz`. The workflow can also be started from the Actions
 tab without a tag; that produces the same files as run artifacts, without a
 release.
 
 **Android.** Install [Obtainium](https://github.com/ImranR98/Obtainium) on
 the phone and add `https://github.com/JinWei225/flutter-music-player` as an
-app: it watches the releases and installs each new APK with one tap, no
-laptop or cable involved. Or just open the release page in the phone's
-browser and download the APK.
+app, with *Filter APKs by regular expression* set to `arm64-v8a` so it
+picks the phone's APK. It watches the releases and installs each new APK
+with one tap, no laptop or cable involved. Or just open the release page in
+the phone's browser and download the arm64-v8a APK.
 
 Android only lets an APK update an installed app when both are signed with
 the same key, and the CI runner's debug key is not your laptop's. So make a
