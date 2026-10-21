@@ -6,6 +6,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 class SettingsStore {
   static const _volumeKey = 'player.volume';
   static const _darkModeKey = 'ui.darkMode';
+  static const _showLyricsKey = 'ui.showLyrics';
 
   final SharedPreferences _prefs;
 
@@ -27,6 +28,12 @@ class SettingsStore {
   bool get darkMode => _prefs.getBool(_darkModeKey) ?? true;
 
   Future<void> setDarkMode(bool value) => _prefs.setBool(_darkModeKey, value);
+
+  /// Whether Now Playing shows the lyrics in place of the cover art.
+  bool get showLyrics => _prefs.getBool(_showLyricsKey) ?? false;
+
+  Future<void> setShowLyrics(bool value) =>
+      _prefs.setBool(_showLyricsKey, value);
 
   // Repeat mode is deliberately NOT persisted: the app always starts on
   // repeat-list, per the app's default-playback behaviour.

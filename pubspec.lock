@@ -356,11 +356,11 @@ packages:
     dependency: "direct main"
     description:
       path: "."
-      ref: "v1.0.0"
-      resolved-ref: "423d5ebb8fa948d561fa24b777321b8bc8a8aeb0"
+      ref: "v1.1.0"
+      resolved-ref: f0e7a3406b93d8062fe2c179e84c3c92f207f112
       url: "https://github.com/JinWei225/mewsic-tagfix.git"
     source: git
-    version: "1.0.0"
+    version: "1.1.0"
   nested:
     dependency: transitive
     description:

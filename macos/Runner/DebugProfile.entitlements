@@ -9,6 +9,9 @@
 	     Edit Info sheet can save corrected tags back into the files. -->
 	<key>com.apple.security.assets.music.read-write</key>
 	<true/>
+	<!-- Outgoing connections, for looking lyrics up on lrclib.net. -->
+	<key>com.apple.security.network.client</key>
+	<true/>
 	<key>com.apple.security.cs.allow-jit</key>
 	<true/>
 	<key>com.apple.security.network.server</key>

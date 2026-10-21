@@ -15,6 +15,9 @@
     <uses-permission android:name="android.permission.WAKE_LOCK" />
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
 
+    <!-- Lyrics are looked up on lrclib.net when a song carries none. -->
+    <uses-permission android:name="android.permission.INTERNET" />
+
     <application
         android:label="Mewsic"
         android:name="${applicationName}"

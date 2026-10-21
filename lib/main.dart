@@ -14,6 +14,7 @@ import 'platform/media_store_library_source.dart';
 import 'platform/settings_store.dart';
 import 'ui/shell.dart';
 import 'ui/theme.dart';
+import 'ui/widgets/lyrics_view.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -90,6 +91,7 @@ class MusicPlayerApp extends StatelessWidget {
         ChangeNotifierProvider.value(value: library),
         ChangeNotifierProvider.value(value: player),
         ChangeNotifierProvider(create: (_) => ThemeController(settings)),
+        ChangeNotifierProvider(create: (_) => LyricsToggle(settings)),
       ],
       child: Consumer<ThemeController>(
         builder: (context, theme, _) => MaterialApp(

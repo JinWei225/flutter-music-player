@@ -5,6 +5,7 @@ import '../../core/models/track.dart';
 import '../../core/player/player_model.dart';
 import '../theme.dart';
 import 'album_art.dart';
+import 'lyrics_view.dart';
 import 'player/queue_list.dart';
 import 'terminal_panel.dart';
 import 'terminal_widgets.dart';
@@ -40,7 +41,16 @@ class NowPlayingPanel extends StatelessWidget {
       child: TerminalPanel(
         title: 'now playing',
         padding: _padding,
-        trailing: _CloseButton(onClose: onClose),
+        trailing: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            if (track != null) ...[
+              const LyricsToggleButton(inBorder: true),
+              const SizedBox(width: 6),
+            ],
+            _CloseButton(onClose: onClose),
+          ],
+        ),
         // Material so the queue rows have something to paint their ink on.
         child: Material(
           type: MaterialType.transparency,
@@ -129,7 +139,10 @@ class _Hero extends StatelessWidget {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        AlbumArt(size: artSize, track: track),
+        if (context.watch<LyricsToggle>().visible)
+          LyricsView(track: track, width: artSize, height: artSize)
+        else
+          AlbumArt(size: artSize, track: track),
         const SizedBox(height: 14),
         Text(
           track.title,

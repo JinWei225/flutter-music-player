@@ -3,12 +3,15 @@ import 'dart:io';
 import 'package:custom_music_player/core/library/library_model.dart';
 import 'package:custom_music_player/core/models/album.dart';
 import 'package:custom_music_player/core/player/player_model.dart';
+import 'package:custom_music_player/platform/lrclib_client.dart';
+import 'package:custom_music_player/platform/lyrics_store.dart';
 import 'package:custom_music_player/platform/settings_store.dart';
 import 'package:custom_music_player/ui/pages/all_songs_page.dart';
 import 'package:custom_music_player/ui/shell.dart';
 import 'package:custom_music_player/ui/theme.dart';
 import 'package:custom_music_player/ui/widgets/command_prompt.dart';
 import 'package:custom_music_player/ui/widgets/edit_track_info_dialog.dart';
+import 'package:custom_music_player/ui/widgets/lyrics_view.dart';
 import 'package:custom_music_player/ui/widgets/mini_player.dart';
 import 'package:custom_music_player/ui/widgets/now_playing_panel.dart';
 import 'package:custom_music_player/ui/widgets/now_playing_sheet.dart';
@@ -23,6 +26,7 @@ import 'package:provider/provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import 'fixture_library.dart';
+import 'lyrics_test.dart' show FakeLrclib;
 import 'player_test.dart' show FakeAudioBackend;
 
 /// Drives the real UI against the fixture library on disk (see
@@ -40,6 +44,7 @@ void main() {
   late PlayerModel player;
   late LibraryModel library;
   late SettingsStore settings;
+  late FakeLrclib lrclib;
 
   /// What the Edit Info sheet asked to write, instead of touching the
   /// real files in the music folder.
@@ -51,6 +56,7 @@ void main() {
         ChangeNotifierProvider.value(value: library),
         ChangeNotifierProvider.value(value: player),
         ChangeNotifierProvider(create: (_) => ThemeController(settings)),
+        ChangeNotifierProvider(create: (_) => LyricsToggle(settings)),
       ],
       child: Consumer<ThemeController>(
         builder: (context, theme, _) => MaterialApp(
@@ -83,6 +89,18 @@ void main() {
       audio = FakeAudioBackend();
       player = PlayerModel(settings, audio: audio);
       written.clear();
+      // Lyrics come from a script, never lrclib.net, and are not cached
+      // anywhere that outlives the test.
+      lrclib = FakeLrclib()
+        ..answer = const LrclibRecord(
+          synced: '[00:05.00]First line\n[00:12.00]Second line',
+        );
+      final support = await Directory.systemTemp.createTemp('lyrics');
+      addTearDown(() => support.delete(recursive: true));
+      LyricsStore.instance = LyricsStore(
+        lrclib: lrclib,
+        cacheRoot: () async => support,
+      );
       library = LibraryModel(
         source,
         writeTags: (file, edit) async => written.add((file, edit)),
@@ -695,6 +713,65 @@ void main() {
       expect(player.currentTrack?.title, 'Air');
     });
   });
+  group('lyrics', () {
+    /// Finding lyrics reads the song file, a chain of real I/O that the
+    /// test's fake clock would stall partway through. So they are loaded
+    /// under `runAsync` first; the view then picks up the finished result,
+    /// whose callback also runs on the real event loop.
+    Future<void> showLyrics(WidgetTester tester) async {
+      await tester.runAsync(
+        () => LyricsStore.instance.forTrack(player.currentTrack!),
+      );
+      await tester.tap(find.byTooltip('Show lyrics'));
+      await tester.pump();
+      await tester.runAsync(() => Future<void>.delayed(Duration.zero));
+      await tester.pumpAndSettle();
+    }
+
+    testWidgets('the phone sheet swaps the cover for timed lyrics', (
+      tester,
+    ) async {
+      await pumpApp(tester, size: const Size(400, 860));
+      await tester.tap(find.text('ABCD').first);
+      await tester.pumpAndSettle();
+      await tester.tap(find.byType(MiniPlayer));
+      await tester.pumpAndSettle();
+
+      await showLyrics(tester);
+
+      expect(find.text('First line'), findsOneWidget);
+      expect(find.text('lyrics · lrclib.net'), findsOneWidget);
+      expect(find.byTooltip('Show artwork'), findsOneWidget);
+      expect(tester.takeException(), isNull);
+
+      // A line is a way to jump to that point in the song.
+      await tester.tap(find.text('Second line'));
+      await tester.pump();
+      expect(audio.position, const Duration(seconds: 12));
+
+      // The choice outlives the sheet and the app.
+      expect(settings.showLyrics, isTrue);
+      await tester.tap(find.byTooltip('Show artwork'));
+      await tester.pumpAndSettle();
+      expect(find.text('First line'), findsNothing);
+      expect(settings.showLyrics, isFalse);
+    });
+
+    testWidgets('the docked panel toggles from its border', (tester) async {
+      await pumpApp(tester);
+      await tester.tap(find.text('CAKE').first);
+      await tester.pumpAndSettle();
+      expect(find.byType(NowPlayingPanel), findsOneWidget);
+
+      lrclib.answer = null;
+      await showLyrics(tester);
+
+      expect(find.text('no lyrics found'), findsOneWidget);
+      expect(lrclib.lookups, 1);
+      expect(tester.takeException(), isNull);
+    });
+  });
+
   group('command prompt', () {
     Finder prompt() => find.descendant(
       of: find.byType(CommandPrompt),

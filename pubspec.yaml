@@ -45,7 +45,7 @@ dependencies:
   mewsic_tagfix:
     git:
       url: https://github.com/JinWei225/mewsic-tagfix.git
-      ref: v1.0.0
+      ref: v1.1.0
 dev_dependencies:
   flutter_test:
     sdk: flutter

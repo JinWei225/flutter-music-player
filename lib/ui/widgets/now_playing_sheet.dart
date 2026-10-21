@@ -7,6 +7,7 @@ import '../../core/player/player_model.dart';
 import '../theme.dart';
 import 'album_art.dart';
 import 'edit_track_info_dialog.dart';
+import 'lyrics_view.dart';
 import 'player/queue_list.dart';
 import 'player/seek_bar.dart';
 import 'player/transport_buttons.dart';
@@ -54,6 +55,9 @@ class NowPlayingSheet extends StatelessWidget {
                       style: TextStyle(fontSize: 16, color: c.text2),
                     ),
                   ),
+                  // Balances the two buttons on the right, keeping the
+                  // title centred.
+                  const SizedBox(width: 44),
                   Expanded(
                     child: Text(
                       '┤ now playing ├',
@@ -61,6 +65,10 @@ class NowPlayingSheet extends StatelessWidget {
                       style: TextStyle(fontSize: 12, color: c.textDim),
                     ),
                   ),
+                  if (track != null)
+                    const LyricsToggleButton()
+                  else
+                    const SizedBox(width: 44),
                   if (edit != null)
                     Builder(
                       builder: (context) => _BarButton(
@@ -144,7 +152,12 @@ class _Body extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          Center(child: AlbumArt(size: artSize, track: track)),
+          // Lyrics take the cover's place, at the cover's height, so the
+          // controls below stay where the thumb expects them.
+          if (context.watch<LyricsToggle>().visible)
+            LyricsView(track: track, width: double.infinity, height: artSize)
+          else
+            Center(child: AlbumArt(size: artSize, track: track)),
           const SizedBox(height: 14),
           Text(
             track.title,
