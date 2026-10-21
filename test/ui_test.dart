@@ -9,12 +9,14 @@ import 'package:custom_music_player/platform/settings_store.dart';
 import 'package:custom_music_player/ui/pages/all_songs_page.dart';
 import 'package:custom_music_player/ui/shell.dart';
 import 'package:custom_music_player/ui/theme.dart';
+import 'package:custom_music_player/ui/widgets/album_art.dart';
 import 'package:custom_music_player/ui/widgets/command_prompt.dart';
 import 'package:custom_music_player/ui/widgets/edit_track_info_dialog.dart';
 import 'package:custom_music_player/ui/widgets/lyrics_view.dart';
 import 'package:custom_music_player/ui/widgets/mini_player.dart';
 import 'package:custom_music_player/ui/widgets/now_playing_panel.dart';
 import 'package:custom_music_player/ui/widgets/now_playing_sheet.dart';
+import 'package:custom_music_player/ui/widgets/player/queue_list.dart';
 import 'package:custom_music_player/ui/widgets/player_bar.dart';
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
@@ -714,6 +716,11 @@ void main() {
     });
   });
   group('lyrics', () {
+    Finder inSheet(Finder f) =>
+        find.descendant(of: find.byType(NowPlayingSheet), matching: f);
+    Finder inPanel(Finder f) =>
+        find.descendant(of: find.byType(NowPlayingPanel), matching: f);
+
     /// Finding lyrics reads the song file, a chain of real I/O that the
     /// test's fake clock would stall partway through. So they are loaded
     /// under `runAsync` first; the view then picks up the finished result,
@@ -722,13 +729,13 @@ void main() {
       await tester.runAsync(
         () => LyricsStore.instance.forTrack(player.currentTrack!),
       );
-      await tester.tap(find.byTooltip('Show lyrics'));
+      await tester.tap(find.text('LYRICS'));
       await tester.pump();
       await tester.runAsync(() => Future<void>.delayed(Duration.zero));
       await tester.pumpAndSettle();
     }
 
-    testWidgets('the phone sheet swaps the cover for timed lyrics', (
+    testWidgets('the phone sheet swaps the queue for timed lyrics', (
       tester,
     ) async {
       await pumpApp(tester, size: const Size(400, 860));
@@ -736,28 +743,40 @@ void main() {
       await tester.pumpAndSettle();
       await tester.tap(find.byType(MiniPlayer));
       await tester.pumpAndSettle();
+      expect(inSheet(find.byType(QueueList)), findsOneWidget);
 
       await showLyrics(tester);
 
+      // The cover stays; the queue makes way.
+      expect(inSheet(find.byType(AlbumArt)), findsOneWidget);
+      expect(inSheet(find.byType(QueueList)), findsNothing);
       expect(find.text('First line'), findsOneWidget);
       expect(find.text('lyrics · lrclib.net'), findsOneWidget);
-      expect(find.byTooltip('Show artwork'), findsOneWidget);
+      // The queue position belongs to the queue.
+      expect(inSheet(find.text('4/17')), findsNothing);
       expect(tester.takeException(), isNull);
 
       // A line is a way to jump to that point in the song.
+      await tester.ensureVisible(find.text('Second line'));
+      await tester.pumpAndSettle();
       await tester.tap(find.text('Second line'));
       await tester.pump();
       expect(audio.position, const Duration(seconds: 12));
 
       // The choice outlives the sheet and the app.
       expect(settings.showLyrics, isTrue);
-      await tester.tap(find.byTooltip('Show artwork'));
+      await tester.ensureVisible(find.text('UP NEXT'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('UP NEXT'));
       await tester.pumpAndSettle();
       expect(find.text('First line'), findsNothing);
+      expect(inSheet(find.byType(QueueList)), findsOneWidget);
       expect(settings.showLyrics, isFalse);
     });
 
-    testWidgets('the docked panel toggles from its border', (tester) async {
+    testWidgets('the docked panel keeps the cover above the lyrics', (
+      tester,
+    ) async {
       await pumpApp(tester);
       await tester.tap(find.text('CAKE').first);
       await tester.pumpAndSettle();
@@ -766,8 +785,29 @@ void main() {
       lrclib.answer = null;
       await showLyrics(tester);
 
+      expect(inPanel(find.byType(AlbumArt)), findsOneWidget);
+      expect(inPanel(find.byType(LyricsView)), findsOneWidget);
       expect(find.text('no lyrics found'), findsOneWidget);
       expect(lrclib.lookups, 1);
+      expect(tester.takeException(), isNull);
+    });
+
+    testWidgets('a short window scrolls the panel instead of overflowing', (
+      tester,
+    ) async {
+      await pumpApp(tester, size: const Size(1400, 640));
+      await tester.tap(find.text('CAKE').first);
+      await tester.pumpAndSettle();
+      // The cover fills most of the panel; the tabs are further down.
+      await tester.scrollUntilVisible(
+        inPanel(find.text('LYRICS')),
+        100,
+        scrollable: inPanel(find.byType(Scrollable)).first,
+      );
+
+      await showLyrics(tester);
+
+      expect(inPanel(find.byType(LyricsView)), findsOneWidget);
       expect(tester.takeException(), isNull);
     });
   });

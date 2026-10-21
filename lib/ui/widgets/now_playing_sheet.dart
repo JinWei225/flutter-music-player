@@ -12,7 +12,6 @@ import 'player/queue_list.dart';
 import 'player/seek_bar.dart';
 import 'player/transport_buttons.dart';
 import 'player/volume_control.dart';
-import 'terminal_widgets.dart';
 import 'track_row.dart' show showTrackMenu, TrackAction;
 
 /// Full-screen player for compact layouts, where the bottom bar only has room
@@ -55,9 +54,6 @@ class NowPlayingSheet extends StatelessWidget {
                       style: TextStyle(fontSize: 16, color: c.text2),
                     ),
                   ),
-                  // Balances the two buttons on the right, keeping the
-                  // title centred.
-                  const SizedBox(width: 44),
                   Expanded(
                     child: Text(
                       '┤ now playing ├',
@@ -65,10 +61,6 @@ class NowPlayingSheet extends StatelessWidget {
                       style: TextStyle(fontSize: 12, color: c.textDim),
                     ),
                   ),
-                  if (track != null)
-                    const LyricsToggleButton()
-                  else
-                    const SizedBox(width: 44),
                   if (edit != null)
                     Builder(
                       builder: (context) => _BarButton(
@@ -152,12 +144,7 @@ class _Body extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          // Lyrics take the cover's place, at the cover's height, so the
-          // controls below stay where the thumb expects them.
-          if (context.watch<LyricsToggle>().visible)
-            LyricsView(track: track, width: double.infinity, height: artSize)
-          else
-            Center(child: AlbumArt(size: artSize, track: track)),
+          Center(child: AlbumArt(size: artSize, track: track)),
           const SizedBox(height: 14),
           Text(
             track.title,
@@ -228,18 +215,27 @@ class _Body extends StatelessWidget {
             ],
           ),
           const SizedBox(height: 14),
-          SectionRule(
-            label: 'UP NEXT',
+          UpNextTabs(
             trailing: '${player.currentQueuePosition + 1}/$queueLength',
+            minHeight: 44,
           ),
           const SizedBox(height: 2),
-          // Inside a scroll view already, so the list must size to its content.
-          const QueueList(
-            shrinkWrap: true,
-            horizontalPadding: 0,
-            padding: EdgeInsets.zero,
-            rowMinHeight: 44,
-          ),
+          if (context.watch<LyricsToggle>().showLyrics)
+            // A box of its own inside the scrolling sheet: tall enough to
+            // read along, short enough that the controls stay a flick away.
+            SizedBox(
+              height: math.max(320.0, MediaQuery.sizeOf(context).height * 0.5),
+              child: LyricsView(track: track),
+            )
+          else
+            // Inside a scroll view already, so the list must size to its
+            // content.
+            const QueueList(
+              shrinkWrap: true,
+              horizontalPadding: 0,
+              padding: EdgeInsets.zero,
+              rowMinHeight: 44,
+            ),
         ],
       ),
     );

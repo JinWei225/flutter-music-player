@@ -29,7 +29,7 @@ class SettingsStore {
 
   Future<void> setDarkMode(bool value) => _prefs.setBool(_darkModeKey, value);
 
-  /// Whether Now Playing shows the lyrics in place of the cover art.
+  /// Whether Now Playing lists the lyrics in place of the queue.
   bool get showLyrics => _prefs.getBool(_showLyricsKey) ?? false;
 
   Future<void> setShowLyrics(bool value) =>

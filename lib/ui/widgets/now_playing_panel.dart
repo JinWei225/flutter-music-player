@@ -8,7 +8,6 @@ import 'album_art.dart';
 import 'lyrics_view.dart';
 import 'player/queue_list.dart';
 import 'terminal_panel.dart';
-import 'terminal_widgets.dart';
 
 /// Now Playing for wide layouts, boxed as `┤ now playing ├` with a `×` on
 /// its border: the current track's art and tags on top, the queue in
@@ -35,22 +34,17 @@ class NowPlayingPanel extends StatelessWidget {
     final tracks = player.queueInPlayOrder;
     final position = player.currentQueuePosition;
     final inner = width - 2 - _padding.horizontal;
+    final tabs = Padding(
+      padding: const EdgeInsets.only(top: 14, bottom: 6),
+      child: UpNextTabs(trailing: '${position + 1}/${tracks.length}'),
+    );
 
     return SizedBox(
       width: width,
       child: TerminalPanel(
         title: 'now playing',
         padding: _padding,
-        trailing: Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            if (track != null) ...[
-              const LyricsToggleButton(inBorder: true),
-              const SizedBox(width: 6),
-            ],
-            _CloseButton(onClose: onClose),
-          ],
-        ),
+        trailing: _CloseButton(onClose: onClose),
         // Material so the queue rows have something to paint their ink on.
         child: Material(
           type: MaterialType.transparency,
@@ -61,21 +55,20 @@ class NowPlayingPanel extends StatelessWidget {
                     style: TextStyle(color: c.textDim),
                   ),
                 )
+              : context.watch<LyricsToggle>().showLyrics
+              ? _WithLyrics(
+                  hero: _Hero(track: track, artSize: inner),
+                  heroHeight: inner,
+                  tabs: tabs,
+                  lyrics: LyricsView(track: track),
+                )
               // One list so the art scrolls away under a long queue rather
               // than pinning the queue into a short strip.
               : ListView.builder(
                   itemCount: tracks.length + 2,
                   itemBuilder: (context, i) {
                     if (i == 0) return _Hero(track: track, artSize: inner);
-                    if (i == 1) {
-                      return Padding(
-                        padding: const EdgeInsets.only(top: 14, bottom: 6),
-                        child: SectionRule(
-                          label: 'UP NEXT',
-                          trailing: '${position + 1}/${tracks.length}',
-                        ),
-                      );
-                    }
+                    if (i == 1) return tabs;
                     final index = i - 2;
                     final t = tracks[index];
                     return QueueRow(
@@ -95,6 +88,51 @@ class NowPlayingPanel extends StatelessWidget {
                 ),
         ),
       ),
+    );
+  }
+}
+
+/// The cover and names with the lyrics below. The lyrics take whatever
+/// height is left, so the line being sung stays in view without the panel
+/// itself scrolling. In a window too short for that, everything scrolls as
+/// one list again and the lyrics get a box of their own height.
+class _WithLyrics extends StatelessWidget {
+  final Widget hero;
+  final Widget tabs;
+  final Widget lyrics;
+
+  /// The cover's side; the names and tabs below it add [_belowArt] at most.
+  final double heroHeight;
+
+  const _WithLyrics({
+    required this.hero,
+    required this.heroHeight,
+    required this.tabs,
+    required this.lyrics,
+  });
+
+  /// Names (a two-line title at most) plus the tabs.
+  static const _belowArt = 140.0;
+  static const _minLyrics = 200.0;
+
+  @override
+  Widget build(BuildContext context) {
+    return LayoutBuilder(
+      builder: (context, box) {
+        if (box.maxHeight - heroHeight - _belowArt >= _minLyrics) {
+          return Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [hero, tabs, Expanded(child: lyrics)],
+          );
+        }
+        return ListView(
+          children: [
+            hero,
+            tabs,
+            SizedBox(height: 300, child: lyrics),
+          ],
+        );
+      },
     );
   }
 }
@@ -139,10 +177,7 @@ class _Hero extends StatelessWidget {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        if (context.watch<LyricsToggle>().visible)
-          LyricsView(track: track, width: artSize, height: artSize)
-        else
-          AlbumArt(size: artSize, track: track),
+        AlbumArt(size: artSize, track: track),
         const SizedBox(height: 14),
         Text(
           track.title,

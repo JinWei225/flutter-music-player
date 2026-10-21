@@ -10,85 +10,95 @@ import '../../core/player/player_model.dart';
 import '../../platform/lyrics_store.dart';
 import '../../platform/settings_store.dart';
 import '../theme.dart';
+import 'terminal_widgets.dart';
 
-/// Whether Now Playing shows lyrics in place of the cover. One switch for
-/// the docked panel and the phone sheet, remembered across restarts.
+/// Whether Now Playing lists the queue or the lyrics under the cover. One
+/// choice for the docked panel and the phone sheet, remembered across
+/// restarts.
 class LyricsToggle extends ChangeNotifier {
   final SettingsStore _settings;
-  bool _visible;
+  bool _showLyrics;
 
-  LyricsToggle(this._settings) : _visible = _settings.showLyrics;
+  LyricsToggle(this._settings) : _showLyrics = _settings.showLyrics;
 
-  bool get visible => _visible;
+  bool get showLyrics => _showLyrics;
 
-  Future<void> toggle() async {
-    _visible = !_visible;
+  Future<void> show({required bool lyrics}) async {
+    if (lyrics == _showLyrics) return;
+    _showLyrics = lyrics;
     notifyListeners();
-    await _settings.setShowLyrics(_visible);
+    await _settings.setShowLyrics(lyrics);
   }
 }
 
-/// `¶`, the lyrics switch: accent while lyrics are showing. JetBrains Mono
-/// has no musical note, and the pilcrow reads as "text".
-class LyricsToggleButton extends StatelessWidget {
-  /// Sized to sit in a panel's top border beside its `×`, rather than as a
-  /// 44px tap target.
-  final bool inBorder;
+/// `UP NEXT  LYRICS ──── 3/53`: the heading over the queue, with the lyrics
+/// as a second tab. The chosen tab is lit; the queue position only shows
+/// while the queue does.
+class UpNextTabs extends StatelessWidget {
+  /// The queue position, `3/53`.
+  final String trailing;
 
-  const LyricsToggleButton({super.key, this.inBorder = false});
+  /// 44 on a phone so each tab is a comfortable tap target.
+  final double minHeight;
+
+  const UpNextTabs({super.key, required this.trailing, this.minHeight = 0});
 
   @override
   Widget build(BuildContext context) {
     final c = TerminalColors.of(context);
     final toggle = context.watch<LyricsToggle>();
-    return Tooltip(
-      message: toggle.visible ? 'Show artwork' : 'Show lyrics',
-      child: InkWell(
-        onTap: toggle.toggle,
-        child: inBorder
-            ? Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 2),
-                child: Text(
-                  '¶',
-                  style: TextStyle(
-                    fontSize: 14,
-                    height: 1.2,
-                    color: toggle.visible ? c.accent : c.textDim,
-                  ),
-                ),
-              )
-            : SizedBox(
-                width: 44,
-                height: 44,
-                child: Center(
-                  child: Text(
-                    '¶',
-                    style: TextStyle(
-                      fontSize: 16,
-                      color: toggle.visible ? c.accent : c.text2,
-                    ),
-                  ),
+    final style = columnHeadingStyle(context);
+
+    Widget tab(String label, {required bool lyrics}) {
+      final selected = toggle.showLyrics == lyrics;
+      return InkWell(
+        onTap: () => toggle.show(lyrics: lyrics),
+        child: ConstrainedBox(
+          constraints: BoxConstraints(minHeight: minHeight),
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 2),
+            child: Center(
+              widthFactor: 1,
+              child: Text(
+                label,
+                style: style.copyWith(
+                  color: selected ? c.accent : c.textDim,
+                  fontWeight: selected ? FontWeight.w700 : FontWeight.w400,
                 ),
               ),
-      ),
+            ),
+          ),
+        ),
+      );
+    }
+
+    return Row(
+      children: [
+        // The tabs' own padding would push UP NEXT off the left edge the
+        // rest of the column lines up on.
+        Transform.translate(
+          offset: const Offset(-4, 0),
+          child: tab('UP NEXT', lyrics: false),
+        ),
+        tab('LYRICS', lyrics: true),
+        const SizedBox(width: 8),
+        Expanded(child: Container(height: 1, color: c.border)),
+        if (!toggle.showLyrics) ...[
+          const SizedBox(width: 8),
+          Text(trailing, style: style),
+        ],
+      ],
     );
   }
 }
 
-/// The current track's lyrics in a bordered box the size the cover would
-/// take. Timed lyrics follow the song: the line being sung is lit and kept
-/// in view, and tapping a line jumps there. Plain lyrics just scroll.
+/// The current track's lyrics, filling the space the queue would take.
+/// Timed lyrics follow the song: the line being sung is lit and kept in
+/// view, and tapping a line jumps there. Plain lyrics just scroll.
 class LyricsView extends StatefulWidget {
   final Track track;
-  final double width;
-  final double height;
 
-  const LyricsView({
-    super.key,
-    required this.track,
-    required this.width,
-    required this.height,
-  });
+  const LyricsView({super.key, required this.track});
 
   @override
   State<LyricsView> createState() => _LyricsViewState();
@@ -191,11 +201,8 @@ class _LyricsViewState extends State<LyricsView> {
   @override
   Widget build(BuildContext context) {
     final c = TerminalColors.of(context);
-    return Container(
-      width: widget.width,
-      height: widget.height,
-      decoration: BoxDecoration(border: Border.all(color: c.border)),
-      child: FutureBuilder<Lyrics?>(
+    return LayoutBuilder(
+      builder: (context, box) => FutureBuilder<Lyrics?>(
         future: _lyrics,
         builder: (context, snap) {
           if (snap.connectionState != ConnectionState.done) {
@@ -208,13 +215,13 @@ class _LyricsViewState extends State<LyricsView> {
           if (lyrics.instrumental) {
             return _Note('instrumental', color: c.textDim);
           }
-          return _lines(context, lyrics);
+          return _lines(context, lyrics, box.maxHeight);
         },
       ),
     );
   }
 
-  Widget _lines(BuildContext context, Lyrics lyrics) {
+  Widget _lines(BuildContext context, Lyrics lyrics, double height) {
     final c = TerminalColors.of(context);
     final synced = lyrics.isSynced;
     final player = context.read<PlayerModel>();
@@ -228,11 +235,9 @@ class _LyricsViewState extends State<LyricsView> {
         controller: _scroll,
         // Room above and below so the first and last lines can sit level
         // with the middle, where the sung line is kept.
-        padding: EdgeInsets.fromLTRB(
-          14,
-          synced ? widget.height * 0.35 : 12,
-          14,
-          synced ? widget.height * 0.5 : 12,
+        padding: EdgeInsets.only(
+          top: synced ? height * 0.35 : 6,
+          bottom: synced ? height * 0.5 : 6,
         ),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
