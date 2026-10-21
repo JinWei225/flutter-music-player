@@ -27,6 +27,24 @@ class FakeLrclib extends LrclibClient {
   }
 }
 
+/// The real lookup, with lrclib.net's two endpoints answering from a
+/// script: a value, null for "404 not found", or [LrclibUnavailable].
+class ScriptedLrclib extends LrclibClient {
+  final Object? exact;
+  final Object? search;
+  final asked = <String>[];
+
+  ScriptedLrclib({this.exact, this.search});
+
+  @override
+  Future<Object?> getJson(String path, Map<String, String> query) async {
+    asked.add(path);
+    final answer = path == '/api/get' ? exact : search;
+    if (answer is LrclibUnavailable) throw answer;
+    return answer;
+  }
+}
+
 /// A minimal m4a whose only tag is `©lyr`, which is all the lyrics reader
 /// looks at.
 Uint8List m4aWithLyrics(String lyrics) {
@@ -138,6 +156,69 @@ void main() {
       expect(lyrics.lineAt(const Duration(seconds: 5)), 0);
       expect(lyrics.lineAt(const Duration(seconds: 12)), 1);
       expect(lyrics.lineAt(const Duration(minutes: 3)), 2);
+    });
+  });
+
+  group('LrclibClient.lookup', () {
+    const down = LrclibUnavailable('HTTP 503');
+    final synced = {
+      'trackName': 'Psychic Lover',
+      'artistName': 'ITZY',
+      'duration': 164.0,
+      'plainLyrics': 'I can be your psychic lover',
+      'syncedLyrics': '[00:10.00]I can be your psychic lover',
+    };
+
+    Future<LrclibRecord?> lookup(LrclibClient client) => client.lookup(
+      title: 'Psychic Lover',
+      artist: 'ITZY',
+      album: 'KILL MY DOUBT - EP',
+      duration: const Duration(milliseconds: 164513),
+    );
+
+    test('timed lyrics from the exact lookup need no search', () async {
+      final client = ScriptedLrclib(exact: synced);
+
+      expect((await lookup(client))?.hasSynced, isTrue);
+      expect(client.asked, ['/api/get']);
+    });
+
+    test('the search finds what the exact lookup misses', () async {
+      final client = ScriptedLrclib(exact: null, search: [synced]);
+
+      expect((await lookup(client))?.hasSynced, isTrue);
+    });
+
+    test('nothing in either answer is a real miss', () async {
+      final client = ScriptedLrclib(exact: null, search: const []);
+
+      expect(await lookup(client), isNull);
+    });
+
+    test(
+      'a failed search is no answer, even after the exact lookup missed',
+      () async {
+        // What hid Psychic Lover's lyrics on the Mac: the exact lookup never
+        // finds it, and one failed search was taken as "it has none".
+        final client = ScriptedLrclib(exact: null, search: down);
+
+        await expectLater(lookup(client), throwsA(isA<LrclibUnavailable>()));
+      },
+    );
+
+    test('a failed search keeps what the exact lookup found', () async {
+      final client = ScriptedLrclib(
+        exact: {...synced, 'syncedLyrics': null},
+        search: down,
+      );
+
+      expect((await lookup(client))?.plain, 'I can be your psychic lover');
+    });
+
+    test('both failing is no answer', () async {
+      final client = ScriptedLrclib(exact: down, search: down);
+
+      await expectLater(lookup(client), throwsA(isA<LrclibUnavailable>()));
     });
   });
 

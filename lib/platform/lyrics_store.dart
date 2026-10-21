@@ -30,7 +30,9 @@ class LyricsStore {
   static const _retryMissAfter = Duration(days: 3);
 
   /// Bumped when the cache file layout changes, so old files are ignored.
-  static const _cacheVersion = 1;
+  /// 2: version 1 could remember a miss when lrclib.net's search had
+  /// failed, hiding lyrics it does have; every song is asked once more.
+  static const _cacheVersion = 2;
 
   final LrclibClient _lrclib;
   final Future<Directory> Function() _cacheRoot;

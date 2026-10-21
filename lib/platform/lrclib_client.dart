@@ -2,6 +2,8 @@ import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 
+import 'package:flutter/foundation.dart';
+
 /// What lrclib.net holds for one recording.
 class LrclibRecord {
   /// LRC text with `[mm:ss.xx]` timestamps, when someone has timed it.
@@ -79,18 +81,16 @@ class LrclibClient {
     Duration? duration,
   }) async {
     LrclibRecord? exact;
-    var reached = false;
     if (duration != null) {
       try {
         exact = LrclibRecord.fromJson(
-          await _get('/api/get', {
+          await getJson('/api/get', {
             'track_name': title,
             'artist_name': artist,
             'album_name': album,
             'duration': '${(duration.inMilliseconds / 1000).round()}',
           }),
         );
-        reached = true;
       } on LrclibUnavailable {
         // The search below may still answer.
       }
@@ -99,13 +99,16 @@ class LrclibClient {
 
     List<Object?> results;
     try {
-      final json = await _get('/api/search', {
+      final json = await getJson('/api/search', {
         'track_name': title,
         'artist_name': artist,
       });
       results = json is List ? json : const [];
     } on LrclibUnavailable {
-      if (reached) return exact;
+      // The exact lookup's lyrics still stand. Its "none" does not: songs
+      // whose names differ there are only ever found by the search, so
+      // without it there is no answer yet, and the miss must not be kept.
+      if (exact != null) return exact;
       rethrow;
     }
 
@@ -189,7 +192,9 @@ class LrclibClient {
 
   /// The decoded JSON body, or null for a 404. Anything else that is not a
   /// 200 counts as the server being unavailable.
-  Future<Object?> _get(String path, Map<String, String> query) async {
+  @protected
+  @visibleForTesting
+  Future<Object?> getJson(String path, Map<String, String> query) async {
     final uri = Uri.https(_host, path, query);
     try {
       final request = await _http.getUrl(uri);
