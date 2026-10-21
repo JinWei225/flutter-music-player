@@ -36,9 +36,11 @@ Future<void> main() async {
 
   // On Android a media session is what keeps playback running once the app is
   // backgrounded, and it supplies the lock-screen and notification controls.
+  // On macOS it is what puts the track in Now Playing (the menu bar and
+  // Control Center) and lets the media keys and headphone buttons reach it.
   // The handler owns the player so both it and the app drive the same one.
   MewsicAudioHandler? mediaSession;
-  if (Platform.isAndroid) {
+  if (Platform.isAndroid || Platform.isMacOS) {
     mediaSession = await AudioService.init(
       builder: MewsicAudioHandler.new,
       config: const AudioServiceConfig(

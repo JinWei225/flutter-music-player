@@ -8,14 +8,15 @@ import '../core/models/track.dart';
 import '../core/player/player_model.dart';
 import 'artwork_cache.dart';
 
-/// Bridges the app's [PlayerModel] to Android's media session, which is what
-/// keeps audio alive in the background and draws the lock-screen and
-/// notification controls.
+/// Bridges the app's [PlayerModel] to the system's media session. On Android
+/// that is what keeps audio alive in the background and draws the
+/// lock-screen and notification controls; on macOS it is Now Playing in the
+/// menu bar and Control Center, and the media keys.
 ///
 /// The handler owns the [AudioPlayer] so that the session and the app drive the
 /// same player. [PlayerModel] stays the single source of truth for the queue,
-/// shuffle and repeat; transport buttons from the notification are forwarded to
-/// it, and its notifications are mirrored back out as session state.
+/// shuffle and repeat; transport buttons from the system are forwarded to it,
+/// and its notifications are mirrored back out as session state.
 class MewsicAudioHandler extends BaseAudioHandler with SeekHandler {
   final AudioPlayer player = AudioPlayer();
   final ArtworkCache _artwork = ArtworkCache();
