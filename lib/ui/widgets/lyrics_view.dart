@@ -109,13 +109,19 @@ class _LyricsViewState extends State<LyricsView> {
   /// so it does not yank the view out from under them.
   static const _manualScrollHold = Duration(seconds: 4);
 
+  /// When lrclib.net could not be reached, it is asked once more after
+  /// this long by itself; after that, a tap asks again.
+  static const _autoRetryAfter = Duration(seconds: 20);
+
   final _scroll = ScrollController();
   List<GlobalKey> _lineKeys = const [];
-  Future<Lyrics?>? _lyrics;
+  Future<LyricsLookup>? _lyrics;
   Lyrics? _loaded;
   StreamSubscription<Duration>? _position;
   int _current = -1;
   DateTime? _scrolledByHand;
+  Timer? _retry;
+  var _autoRetried = false;
 
   @override
   void initState() {
@@ -134,11 +140,15 @@ class _LyricsViewState extends State<LyricsView> {
   @override
   void dispose() {
     _position?.cancel();
+    _retry?.cancel();
     _scroll.dispose();
     super.dispose();
   }
 
-  void _load() {
+  void _load({bool retrying = false}) {
+    if (!retrying) _autoRetried = false;
+    _retry?.cancel();
+    _retry = null;
     _position?.cancel();
     _position = null;
     _loaded = null;
@@ -146,11 +156,18 @@ class _LyricsViewState extends State<LyricsView> {
     _scrolledByHand = null;
     if (_scroll.hasClients) _scroll.jumpTo(0);
 
-    final future = LyricsStore.instance.forTrack(widget.track);
+    final future = LyricsStore.instance.forTrack(widget.track, retry: retrying);
     _lyrics = future;
-    future.then((lyrics) {
+    future.then((lookup) {
       // A newer track may have taken over while this one was loading.
       if (!mounted || _lyrics != future) return;
+      final lyrics = lookup.lyrics;
+      if (lookup.unavailable && lyrics == null && !_autoRetried) {
+        _autoRetried = true;
+        _retry = Timer(_autoRetryAfter, () {
+          if (mounted) setState(() => _load(retrying: true));
+        });
+      }
       setState(() {
         _loaded = lyrics;
         _lineKeys = [
@@ -202,14 +219,25 @@ class _LyricsViewState extends State<LyricsView> {
   Widget build(BuildContext context) {
     final c = TerminalColors.of(context);
     return LayoutBuilder(
-      builder: (context, box) => FutureBuilder<Lyrics?>(
+      builder: (context, box) => FutureBuilder<LyricsLookup>(
         future: _lyrics,
         builder: (context, snap) {
           if (snap.connectionState != ConnectionState.done) {
             return _Note('looking for lyrics…', color: c.textDim);
           }
-          final lyrics = _loaded ?? snap.data;
+          final lyrics = _loaded ?? snap.data?.lyrics;
           if (lyrics == null) {
+            if (snap.data?.unavailable ?? false) {
+              // Not "none": lrclib.net did not answer, so say that, and
+              // let a tap ask again rather than waiting for the next play.
+              return InkWell(
+                onTap: () => setState(() => _load(retrying: true)),
+                child: _Note(
+                  "couldn't reach lrclib.net\ntap to try again",
+                  color: c.textDim,
+                ),
+              );
+            }
             return _Note('no lyrics found', color: c.textDim);
           }
           if (lyrics.instrumental) {
@@ -321,6 +349,10 @@ class _Note extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) => Center(
-    child: Text(text, style: TextStyle(color: color)),
+    child: Text(
+      text,
+      textAlign: TextAlign.center,
+      style: TextStyle(color: color),
+    ),
   );
 }

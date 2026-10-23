@@ -9,6 +9,18 @@ import '../core/lyrics/lyrics.dart';
 import '../core/models/track.dart';
 import 'lrclib_client.dart';
 
+/// What looking a track's lyrics up came to.
+class LyricsLookup {
+  /// The best lyrics found, or null for none.
+  final Lyrics? lyrics;
+
+  /// lrclib.net could not be asked, or not fully, so a better answer may
+  /// come on a later try. With no [lyrics], "none" is then not known.
+  final bool unavailable;
+
+  const LyricsLookup(this.lyrics, {this.unavailable = false});
+}
+
 /// Finds a track's lyrics, in this order: an `.lrc` file beside the song,
 /// the song's own lyrics tag, then lrclib.net. Timed lyrics are preferred
 /// wherever they come from, so a file with plain lyrics still gets the
@@ -17,9 +29,11 @@ import 'lrclib_client.dart';
 ///
 /// lrclib.net's answers -- "none" included -- are kept on the device, so a
 /// song is looked up once rather than on every play, and its lyrics still
-/// show offline. A miss is asked again after [_retryMissAfter], in case
-/// someone has added the song since. A lookup that failed (offline, server
-/// down) is not remembered at all, so the next play tries again.
+/// show offline. Timed lyrics are kept for good; anything less (plain
+/// lyrics, "instrumental", none) is asked again after [_recheckAfter], in
+/// case someone has added or timed the song since, and stays in use while
+/// that cannot be done. A lookup that failed (offline, server down), or
+/// only half answered, is not remembered, so the next play tries again.
 class LyricsStore {
   /// The app-wide store. Tests swap in one that never reaches the network.
   static LyricsStore instance = LyricsStore();
@@ -27,12 +41,17 @@ class LyricsStore {
   /// The few tracks around what is playing; older entries are dropped first.
   static const _maxEntries = 32;
 
-  static const _retryMissAfter = Duration(days: 3);
+  static const _recheckAfter = Duration(days: 3);
+
+  static const _failureHeldFor = Duration(seconds: 15);
 
   /// Bumped when the cache file layout changes, so old files are ignored.
   /// 2: version 1 could remember a miss when lrclib.net's search had
   /// failed, hiding lyrics it does have; every song is asked once more.
-  static const _cacheVersion = 2;
+  /// 3: version 2 could keep half an answer (plain lyrics, or a bare
+  /// "instrumental") from a failed search. Its timed lyrics are kept; the
+  /// rest is asked about again at once.
+  static const _cacheVersion = 3;
 
   final LrclibClient _lrclib;
   final Future<Directory> Function() _cacheRoot;
@@ -46,33 +65,56 @@ class LyricsStore {
        _cacheRoot = cacheRoot ?? getApplicationSupportDirectory,
        _now = now ?? DateTime.now;
 
-  final _byTrack = <String, Future<Lyrics?>>{};
+  final _byTrack = <String, Future<LyricsLookup>>{};
+
+  /// When each held failure in [_byTrack] came back.
+  final _failedAt = <String, DateTime>{};
   Directory? _dir;
 
-  /// Lyrics for [track], or null when there are none anywhere.
-  Future<Lyrics?> forTrack(Track track) {
+  /// Lyrics for [track], and whether lrclib.net could be asked.
+  ///
+  /// A lookup that could not reach lrclib.net is given back as it is for a
+  /// little while ([_failureHeldFor]), so showing the lyrics again -- a tab
+  /// switch, a rebuild -- does not set off another round of requests; after
+  /// that, or with [retry], it is made afresh.
+  Future<LyricsLookup> forTrack(Track track, {bool retry = false}) {
     // The names are part of the key: after Edit Info renames a track, its
     // lyrics are looked up afresh under the new names.
     final key =
         '${track.path}\u0001${track.title}\u0001${track.artist}'
         '\u0001${track.album}';
+    final failedAt = _failedAt[key];
+    if (failedAt != null &&
+        (retry || _now().difference(failedAt) >= _failureHeldFor)) {
+      _byTrack.remove(key);
+      _failedAt.remove(key);
+    }
     final cached = _byTrack.remove(key);
     if (cached != null) {
       _byTrack[key] = cached; // most recently used goes last
       return cached;
     }
 
-    final future = _resolve(track).then((r) {
-      // Failed lookups are not kept, so the next request tries again.
-      if (!r.settled) _byTrack.remove(key);
-      return r.lyrics;
+    late final Future<LyricsLookup> future;
+    future = _resolve(track).then((r) {
+      // Marked so the next request after a while tries again.
+      if (!r.settled && identical(_byTrack[key], future)) {
+        _failedAt[key] = _now();
+      }
+      return LyricsLookup(r.lyrics, unavailable: !r.settled);
     });
     _byTrack[key] = future;
-    if (_byTrack.length > _maxEntries) _byTrack.remove(_byTrack.keys.first);
+    if (_byTrack.length > _maxEntries) {
+      _failedAt.remove(_byTrack.keys.first);
+      _byTrack.remove(_byTrack.keys.first);
+    }
     return future;
   }
 
-  void clear() => _byTrack.clear();
+  void clear() {
+    _byTrack.clear();
+    _failedAt.clear();
+  }
 
   Future<({Lyrics? lyrics, bool settled})> _resolve(Track track) async {
     final local = await _local(track);
@@ -132,7 +174,9 @@ class LyricsStore {
     final file = await _cacheFile(key);
 
     final remembered = await _readCache(file, key);
-    if (remembered != null) return (lyrics: remembered.lyrics, settled: true);
+    if (remembered != null && !remembered.stale) {
+      return (lyrics: remembered.lyrics, settled: true);
+    }
 
     final LrclibRecord? record;
     try {
@@ -144,9 +188,17 @@ class LyricsStore {
       );
     } on LrclibUnavailable catch (e) {
       debugPrint('No lyrics lookup for ${track.title}: $e');
-      return (lyrics: null, settled: false);
+      // What was found before still beats nothing.
+      return (lyrics: remembered?.lyrics, settled: false);
     }
 
+    if (record != null && record.partial) {
+      // Shown, but kept out of the cache so the next play asks again.
+      return (
+        lyrics: _fromRecord(record) ?? remembered?.lyrics,
+        settled: false,
+      );
+    }
     await _writeCache(file, key, record);
     return (lyrics: _fromRecord(record), settled: true);
   }
@@ -183,26 +235,33 @@ class LyricsStore {
   }
 
   /// The remembered answer, or null when there is none worth trusting: no
-  /// file, a different track's file, an unreadable one, or a miss old
-  /// enough to ask again.
-  Future<({Lyrics? lyrics})?> _readCache(File file, String key) async {
+  /// file, a different track's file or an unreadable one. [stale] marks an
+  /// answer short of timed lyrics that is old enough to ask about again.
+  Future<({Lyrics? lyrics, bool stale})?> _readCache(
+    File file,
+    String key,
+  ) async {
     try {
       if (!await file.exists()) return null;
       final json = jsonDecode(await file.readAsString());
+      final version = json is Map ? json['version'] : null;
       if (json is! Map ||
-          json['version'] != _cacheVersion ||
+          (version != _cacheVersion && version != 2) ||
           json['key'] != key) {
         return null;
       }
-      final checked = json['checked'];
-      if (json['found'] != true) {
-        if (checked is! int) return null;
-        final age = _now().difference(
-          DateTime.fromMillisecondsSinceEpoch(checked),
-        );
-        return age > _retryMissAfter ? null : (lyrics: null);
+      final lyrics = json['found'] == true
+          ? _fromRecord(LrclibRecord.fromJson(json))
+          : null;
+      if (lyrics != null && lyrics.isSynced) {
+        return (lyrics: lyrics, stale: false);
       }
-      return (lyrics: _fromRecord(LrclibRecord.fromJson(json)));
+      final checked = json['checked'];
+      if (checked is! int) return null;
+      final age = _now().difference(
+        DateTime.fromMillisecondsSinceEpoch(checked),
+      );
+      return (lyrics: lyrics, stale: version == 2 || age > _recheckAfter);
     } catch (e) {
       debugPrint('Ignoring unreadable lyrics cache ${file.path}: $e');
       return null;

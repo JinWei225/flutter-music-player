@@ -9,24 +9,46 @@ class LrclibRecord {
   /// LRC text with `[mm:ss.xx]` timestamps, when someone has timed it.
   final String? synced;
   final String? plain;
+
+  /// No vocals. Only ever set when there are no lyrics either: lrclib.net
+  /// has many entries flagged instrumental that carry a song's full lyrics
+  /// (DALLA DALLA has a dozen), and the lyrics are what is right.
   final bool instrumental;
 
-  const LrclibRecord({this.synced, this.plain, this.instrumental = false});
+  /// Not the whole answer: part of the lookup failed, so a better version
+  /// may still be found. Shown, but not kept.
+  final bool partial;
+
+  const LrclibRecord({
+    this.synced,
+    this.plain,
+    this.instrumental = false,
+    this.partial = false,
+  });
 
   bool get hasSynced => synced != null;
+
+  LrclibRecord get asPartial => LrclibRecord(
+    synced: synced,
+    plain: plain,
+    instrumental: instrumental,
+    partial: true,
+  );
 
   static LrclibRecord? fromJson(Object? json) {
     if (json is! Map) return null;
     String? text(Object? v) =>
         v is String && v.trim().isNotEmpty ? v.trim() : null;
-    final record = LrclibRecord(
-      synced: text(json['syncedLyrics']),
-      plain: text(json['plainLyrics']),
-      instrumental: json['instrumental'] == true,
+    final synced = text(json['syncedLyrics']);
+    final plain = text(json['plainLyrics']);
+    final instrumental =
+        json['instrumental'] == true && synced == null && plain == null;
+    if (synced == null && plain == null && !instrumental) return null;
+    return LrclibRecord(
+      synced: synced,
+      plain: plain,
+      instrumental: instrumental,
     );
-    final empty =
-        record.synced == null && record.plain == null && !record.instrumental;
-    return empty ? null : record;
   }
 }
 
@@ -36,7 +58,10 @@ class LrclibRecord {
 class LrclibUnavailable implements Exception {
   final String message;
 
-  const LrclibUnavailable(this.message);
+  /// How long the server asked us to wait before trying again, when it said.
+  final Duration? retryAfter;
+
+  const LrclibUnavailable(this.message, {this.retryAfter});
 
   @override
   String toString() => 'lrclib.net unavailable: $message';
@@ -52,6 +77,11 @@ class LrclibUnavailable implements Exception {
 /// of those, but returns near-misses too (another song of the same length
 /// by the same artist), so its results are only taken when the title and
 /// artist really match.
+///
+/// lrclib.net often answers 503 ("try again in a second") or 429 (too many
+/// requests); asked again a moment later, it answers. So every request is
+/// retried a few times, waiting as long as the server asks, and lookups go
+/// out one at a time so skipping through songs does not pile them up.
 class LrclibClient {
   static const _host = 'lrclib.net';
 
@@ -69,22 +99,53 @@ class LrclibClient {
       (HttpClient()..connectionTimeout = const Duration(seconds: 10));
   final HttpClient? _injectedHttp;
 
-  LrclibClient({HttpClient? http}) : _injectedHttp = http;
+  /// Tries per request, the first included.
+  static const _attempts = 5;
+
+  /// Waits between tries; replaced in tests so they need not sleep.
+  final Future<void> Function(Duration) _pause;
+
+  /// The lookup in progress; the next one starts when it is done.
+  Future<void> _queue = Future.value();
+
+  LrclibClient({HttpClient? http, Future<void> Function(Duration)? pause})
+    : _injectedHttp = http,
+      _pause = pause ?? Future<void>.delayed;
 
   /// The best lyrics for a track, preferring timed ones, or null when
   /// lrclib.net has none. Throws [LrclibUnavailable] when it could not be
-  /// asked.
+  /// asked. A record marked [LrclibRecord.partial] is the best of an
+  /// incomplete answer.
   Future<LrclibRecord?> lookup({
+    required String title,
+    required String artist,
+    required String album,
+    Duration? duration,
+  }) {
+    final done = _queue.then(
+      (_) => _lookup(
+        title: title,
+        artist: artist,
+        album: album,
+        duration: duration,
+      ),
+    );
+    _queue = done.then<void>((_) {}, onError: (Object _) {});
+    return done;
+  }
+
+  Future<LrclibRecord?> _lookup({
     required String title,
     required String artist,
     required String album,
     Duration? duration,
   }) async {
     LrclibRecord? exact;
+    var exactFailed = false;
     if (duration != null) {
       try {
         exact = LrclibRecord.fromJson(
-          await getJson('/api/get', {
+          await _ask('/api/get', {
             'track_name': title,
             'artist_name': artist,
             'album_name': album,
@@ -93,22 +154,23 @@ class LrclibClient {
         );
       } on LrclibUnavailable {
         // The search below may still answer.
+        exactFailed = true;
       }
       if (exact != null && exact.hasSynced) return exact;
     }
 
     List<Object?> results;
     try {
-      final json = await getJson('/api/search', {
+      final json = await _ask('/api/search', {
         'track_name': title,
         'artist_name': artist,
       });
       results = json is List ? json : const [];
     } on LrclibUnavailable {
-      // The exact lookup's lyrics still stand. Its "none" does not: songs
-      // whose names differ there are only ever found by the search, so
-      // without it there is no answer yet, and the miss must not be kept.
-      if (exact != null) return exact;
+      // The exact lookup's lyrics still stand, for now. Its "none" does not:
+      // songs whose names differ there are only ever found by the search,
+      // so without it there is no answer yet, and the miss must not be kept.
+      if (exact != null) return exact.asPartial;
       rethrow;
     }
 
@@ -118,9 +180,33 @@ class LrclibClient {
       artist: artist,
       duration: duration,
     );
+    if (exactFailed) {
+      // Timed lyrics are as good as the exact lookup could have done;
+      // anything less might have been beaten by it.
+      if (match != null && match.hasSynced) return match;
+      if (match != null) return match.asPartial;
+      throw const LrclibUnavailable('exact lookup failed, search found none');
+    }
     if (match == null) return exact;
     // A timed version beats the exact match's plain one.
     return exact == null || match.hasSynced ? match : exact;
+  }
+
+  /// [getJson], tried again while lrclib.net is busy or unreachable.
+  Future<Object?> _ask(String path, Map<String, String> query) async {
+    for (var attempt = 1; ; attempt++) {
+      try {
+        return await getJson(path, query);
+      } on LrclibUnavailable catch (e) {
+        if (attempt == _attempts) rethrow;
+        // A second by default, as the server itself usually asks; its own
+        // figure is honoured within reason.
+        final wait = e.retryAfter ?? const Duration(seconds: 1);
+        await _pause(
+          wait > const Duration(seconds: 5) ? const Duration(seconds: 5) : wait,
+        );
+      }
+    }
   }
 
   /// The search result that is really [title] by [artist], preferring timed
@@ -150,8 +236,18 @@ class LrclibClient {
           : (length - seconds).abs();
       if (off > _durationSlack) continue;
 
-      // Timed lyrics win outright; the length breaks ties.
-      final score = off + (record.hasSynced ? 0 : 100);
+      // Timed lyrics win, then plain, then "instrumental"; among them,
+      // lyrics the uploader also flagged instrumental come last, and the
+      // length breaks ties.
+      final flagged = r['instrumental'] == true && !record.instrumental;
+      final score =
+          off +
+          (record.hasSynced
+              ? 0
+              : record.plain != null
+              ? 100
+              : 200) +
+          (flagged ? 10 : 0);
       if (score < bestScore) {
         best = record;
         bestScore = score;
@@ -160,13 +256,19 @@ class LrclibClient {
     return best;
   }
 
-  /// Equal once case, spacing, punctuation and any featuring or producer
-  /// credit are set aside: "Magic" matches "Magic (feat. JULIE)", but "Air"
-  /// does not match "Air (English Ver.)".
+  /// Equal once case, spacing, punctuation, a leading article and any
+  /// featuring or producer credit are set aside: "Magic" matches "Magic
+  /// (feat. JULIE)", but "Air" does not match "Air (English Ver.)". The
+  /// article goes because a purchase that only carries its sort-order title
+  /// is named that way: "Feels" for TWICE's "The Feels".
   static bool _sameTitle(String a, String b) {
-    final x = _key(a.replaceAll(_credit, ''));
-    return x.isNotEmpty && x == _key(b.replaceAll(_credit, ''));
+    String bare(String s) =>
+        _key(s.replaceAll(_credit, '').replaceFirst(_article, ''));
+    final x = bare(a);
+    return x.isNotEmpty && x == bare(b);
   }
+
+  static final _article = RegExp(r'^\s*(?:the|an?)\s+', caseSensitive: false);
 
   static final _credit = RegExp(
     r'\s*(?:[(\[]\s*(?:feat|ft|prod|with|from)\b[^)\]]*[)\]]'
@@ -207,8 +309,14 @@ class LrclibClient {
         return null;
       }
       if (response.statusCode != 200) {
+        final seconds = int.tryParse(
+          response.headers.value(HttpHeaders.retryAfterHeader) ?? '',
+        );
         await response.drain<void>();
-        throw LrclibUnavailable('HTTP ${response.statusCode}');
+        throw LrclibUnavailable(
+          'HTTP ${response.statusCode}',
+          retryAfter: seconds == null ? null : Duration(seconds: seconds),
+        );
       }
       final body = await response
           .transform(utf8.decoder)

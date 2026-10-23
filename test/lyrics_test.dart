@@ -27,21 +27,46 @@ class FakeLrclib extends LrclibClient {
   }
 }
 
+/// Answers given in turn, one per request, the last one repeating.
+class Answers {
+  final List<Object?> inTurn;
+
+  const Answers(this.inTurn);
+}
+
 /// The real lookup, with lrclib.net's two endpoints answering from a
-/// script: a value, null for "404 not found", or [LrclibUnavailable].
+/// script: a value, null for "404 not found", [LrclibUnavailable], or
+/// [Answers] for a sequence of those. Retries do not wait.
 class ScriptedLrclib extends LrclibClient {
   final Object? exact;
   final Object? search;
   final asked = <String>[];
+  final waits = <Duration>[];
 
-  ScriptedLrclib({this.exact, this.search});
+  /// Requests in flight now, and the most there ever were at once.
+  var _inFlight = 0;
+  var mostAtOnce = 0;
+
+  ScriptedLrclib({this.exact, this.search}) : super(pause: (_) async {});
 
   @override
   Future<Object?> getJson(String path, Map<String, String> query) async {
+    final turn = asked.where((p) => p == path).length;
     asked.add(path);
-    final answer = path == '/api/get' ? exact : search;
-    if (answer is LrclibUnavailable) throw answer;
-    return answer;
+    _inFlight++;
+    if (_inFlight > mostAtOnce) mostAtOnce = _inFlight;
+    try {
+      // Long enough that overlapping lookups would be seen to overlap.
+      await Future<void>.delayed(const Duration(milliseconds: 5));
+      var answer = path == '/api/get' ? exact : search;
+      if (answer is Answers) {
+        answer = answer.inTurn[turn.clamp(0, answer.inTurn.length - 1)];
+      }
+      if (answer is LrclibUnavailable) throw answer;
+      return answer;
+    } finally {
+      _inFlight--;
+    }
   }
 }
 
@@ -220,6 +245,88 @@ void main() {
 
       await expectLater(lookup(client), throwsA(isA<LrclibUnavailable>()));
     });
+
+    test('a busy server is asked again until it answers', () async {
+      // What lrclib.net does: a few 503s, each asking for a second's wait.
+      const busy = LrclibUnavailable(
+        'HTTP 503',
+        retryAfter: Duration(seconds: 1),
+      );
+      final client = ScriptedLrclib(
+        exact: const Answers([busy, busy, busy, null]),
+        search: Answers([
+          busy,
+          [synced],
+        ]),
+      );
+
+      expect((await lookup(client))?.hasSynced, isTrue);
+      expect(client.asked.where((p) => p == '/api/get'), hasLength(4));
+    });
+
+    test('gives up after a few tries', () async {
+      final client = ScriptedLrclib(exact: down, search: down);
+
+      await expectLater(lookup(client), throwsA(isA<LrclibUnavailable>()));
+      expect(client.asked, hasLength(10));
+    });
+
+    test(
+      'plain lyrics while the search failed are only part of the answer',
+      () async {
+        final client = ScriptedLrclib(
+          exact: {...synced, 'syncedLyrics': null},
+          search: down,
+        );
+
+        expect((await lookup(client))?.partial, isTrue);
+      },
+    );
+
+    test(
+      'timed lyrics from the search stand even if the exact one failed',
+      () async {
+        final client = ScriptedLrclib(exact: down, search: [synced]);
+
+        final record = await lookup(client);
+        expect(record?.hasSynced, isTrue);
+        expect(record?.partial, isFalse);
+      },
+    );
+
+    test('a failed exact lookup and an empty search is no answer', () async {
+      // The exact lookup finds songs the search's strict matching skips.
+      final client = ScriptedLrclib(exact: down, search: const []);
+
+      await expectLater(lookup(client), throwsA(isA<LrclibUnavailable>()));
+    });
+
+    test('lookups go out one at a time', () async {
+      final client = ScriptedLrclib(exact: null, search: [synced]);
+
+      await Future.wait([lookup(client), lookup(client), lookup(client)]);
+      expect(client.mostAtOnce, 1);
+    });
+  });
+
+  group('LrclibRecord.fromJson', () {
+    test('lyrics flagged instrumental are still lyrics', () {
+      // How a dozen of lrclib.net's DALLA DALLA entries look.
+      final record = LrclibRecord.fromJson({
+        'instrumental': true,
+        'plainLyrics': 'DALLA DALLA',
+        'syncedLyrics': '[00:01.00]DALLA DALLA',
+      });
+
+      expect(record?.instrumental, isFalse);
+      expect(record?.hasSynced, isTrue);
+    });
+
+    test('instrumental with no lyrics is instrumental', () {
+      final record = LrclibRecord.fromJson({'instrumental': true});
+
+      expect(record?.instrumental, isTrue);
+    });
   });
 
   group('LrclibClient.bestMatch', () {
@@ -301,6 +408,50 @@ void main() {
       expect(match?.plain, 'plain CAKE');
     });
 
+    test('prefers lyrics nobody flagged instrumental', () {
+      final match = LrclibClient.bestMatch(
+        [
+          {...result('DALLA DALLA', 'ITZY', 200), 'instrumental': true},
+          {...result('DALLA DALLA', 'ITZY', 201), 'syncedLyrics': '[00:01]ok'},
+        ],
+        title: 'DALLA DALLA',
+        artist: 'ITZY',
+        duration: const Duration(milliseconds: 199923),
+      );
+
+      expect(match?.synced, '[00:01]ok');
+    });
+
+    test('takes lyrics over a bare instrumental flag', () {
+      final match = LrclibClient.bestMatch(
+        [
+          {
+            'trackName': 'DALLA DALLA',
+            'artistName': 'ITZY',
+            'duration': 200,
+            'instrumental': true,
+          },
+          result('DALLA DALLA', 'ITZY', 200, synced: false),
+        ],
+        title: 'DALLA DALLA',
+        artist: 'ITZY',
+        duration: const Duration(seconds: 200),
+      );
+
+      expect(match?.plain, 'plain DALLA DALLA');
+    });
+
+    test('a title without its leading "The" still matches', () {
+      final match = LrclibClient.bestMatch(
+        [result('The Feels', 'TWICE', 198.07)],
+        title: 'Feels',
+        artist: 'TWICE',
+        duration: const Duration(milliseconds: 198112),
+      );
+
+      expect(match, isNotNull);
+    });
+
     test('curly and straight apostrophes match', () {
       final match = LrclibClient.bestMatch(
         [result("Can't Slow Me, No", 'YEJI', 179)],
@@ -348,12 +499,15 @@ void main() {
 
     tearDown(() => tmp.delete(recursive: true));
 
+    Future<Lyrics?> lyricsOf(LyricsStore s, Track t) async =>
+        (await s.forTrack(t)).lyrics;
+
     test('a timed .lrc beside the song wins without asking online', () async {
       final track = await song('BET ON ME');
       await File('${tmp.path}/BET ON ME.lrc')
           .writeAsString('﻿[00:01.00]From the file');
 
-      final lyrics = await store().forTrack(track);
+      final lyrics = await lyricsOf(store(), track);
 
       expect(lyrics?.source, LyricsSource.file);
       expect(lyrics?.lines.single.text, 'From the file');
@@ -364,7 +518,7 @@ void main() {
       final track = await song('CAKE', bytes: m4aWithLyrics('Plain line'));
       lrclib.answer = const LrclibRecord(synced: '[00:02.00]Timed line');
 
-      final lyrics = await store().forTrack(track);
+      final lyrics = await lyricsOf(store(), track);
 
       expect(lyrics?.source, LyricsSource.lrclib);
       expect(lyrics?.isSynced, isTrue);
@@ -374,7 +528,7 @@ void main() {
       final track = await song('CAKE', bytes: m4aWithLyrics('Plain line'));
       lrclib.answer = const LrclibRecord(plain: 'Their plain line');
 
-      final lyrics = await store().forTrack(track);
+      final lyrics = await lyricsOf(store(), track);
 
       expect(lyrics?.source, LyricsSource.embedded);
       expect(lyrics?.lines.single.text, 'Plain line');
@@ -384,10 +538,10 @@ void main() {
       final track = await song('Bratty');
       lrclib.answer = const LrclibRecord(synced: '[00:02.00]Kept');
 
-      await store().forTrack(track);
+      await lyricsOf(store(), track);
       lrclib.answer = null;
       // A fresh store, as after a restart: only the files remain.
-      final again = await store().forTrack(track);
+      final again = await lyricsOf(store(), track);
 
       expect(again?.lines.single.text, 'Kept');
       expect(lrclib.lookups, 1);
@@ -397,8 +551,8 @@ void main() {
       final track = await song('Intro');
       lrclib.answer = const LrclibRecord(instrumental: true);
 
-      await store().forTrack(track);
-      final again = await store().forTrack(track);
+      await lyricsOf(store(), track);
+      final again = await lyricsOf(store(), track);
 
       expect(again?.instrumental, isTrue);
       expect(lrclib.lookups, 1);
@@ -407,27 +561,52 @@ void main() {
     test('a miss is asked again only after a few days', () async {
       final track = await song('Kill Shot');
 
-      expect(await store().forTrack(track), isNull);
+      expect(await lyricsOf(store(), track), isNull);
       now = now.add(const Duration(days: 1));
-      expect(await store().forTrack(track), isNull);
+      expect(await lyricsOf(store(), track), isNull);
       expect(lrclib.lookups, 1);
 
       now = now.add(const Duration(days: 3));
       lrclib.answer = const LrclibRecord(plain: 'Added since');
-      expect((await store().forTrack(track))?.lines.single.text, 'Added since');
+      expect(
+        (await lyricsOf(store(), track))?.lines.single.text,
+        'Added since',
+      );
       expect(lrclib.lookups, 2);
     });
 
-    test('a failed lookup is not remembered', () async {
+    test('a failed lookup is held briefly, then asked again', () async {
       final track = await song('Psychic Lover');
       final shared = store();
       lrclib.unavailable = true;
 
-      expect(await shared.forTrack(track), isNull);
+      expect(await lyricsOf(shared, track), isNull);
+      lrclib.unavailable = false;
+      lrclib.answer = const LrclibRecord(synced: '[00:01.00]Back online');
+
+      // Showing the lyrics again at once does not ask again...
+      expect(await lyricsOf(shared, track), isNull);
+      expect(lrclib.lookups, 1);
+
+      // ...a little later it does.
+      now = now.add(const Duration(seconds: 20));
+      expect((await lyricsOf(shared, track))?.lines.single.text, 'Back online');
+      expect(lrclib.lookups, 2);
+    });
+
+    test('a retry asks again at once', () async {
+      final track = await song('Psychic Lover');
+      final shared = store();
+      lrclib.unavailable = true;
+      await shared.forTrack(track);
 
       lrclib.unavailable = false;
       lrclib.answer = const LrclibRecord(synced: '[00:01.00]Back online');
-      expect((await shared.forTrack(track))?.lines.single.text, 'Back online');
+      final again = await shared.forTrack(track, retry: true);
+      expect(again.lyrics?.lines.single.text, 'Back online');
+
+      // A retry of a lookup that worked gives back what it found.
+      await shared.forTrack(track, retry: true);
       expect(lrclib.lookups, 2);
     });
 
@@ -437,9 +616,111 @@ void main() {
       lrclib.answer = const LrclibRecord(plain: 'Once');
 
       await Future.wait([shared.forTrack(track), shared.forTrack(track)]);
-      await shared.forTrack(track);
+      await lyricsOf(shared, track);
 
       expect(lrclib.lookups, 1);
+    });
+
+    test('says when lrclib.net could not be asked', () async {
+      final track = await song('Feels');
+      lrclib.unavailable = true;
+
+      final lookup = await store().forTrack(track);
+
+      expect(lookup.lyrics, isNull);
+      expect(lookup.unavailable, isTrue);
+    });
+
+    test('a real miss is not "unavailable"', () async {
+      final track = await song('Kill Shot');
+
+      expect((await store().forTrack(track)).unavailable, isFalse);
+    });
+
+    test('part of an answer is shown but not kept', () async {
+      final track = await song('Bad Girls R Us');
+      lrclib.answer = const LrclibRecord(plain: 'For now', partial: true);
+
+      final first = await store().forTrack(track);
+      expect(first.lyrics?.lines.single.text, 'For now');
+      expect(first.unavailable, isTrue);
+
+      lrclib.answer = const LrclibRecord(synced: '[00:01.00]Timed at last');
+      final again = await lyricsOf(store(), track);
+      expect(again?.isSynced, isTrue);
+      expect(lrclib.lookups, 2);
+    });
+
+    test('kept plain lyrics are checked again for a timed version', () async {
+      final track = await song('UNTOUCHABLE');
+      lrclib.answer = const LrclibRecord(plain: 'Plain');
+      await lyricsOf(store(), track);
+
+      now = now.add(const Duration(days: 1));
+      expect((await lyricsOf(store(), track))?.isSynced, isFalse);
+      expect(lrclib.lookups, 1);
+
+      now = now.add(const Duration(days: 3));
+      lrclib.answer = const LrclibRecord(synced: '[00:01.00]Timed');
+      expect((await lyricsOf(store(), track))?.isSynced, isTrue);
+      expect(lrclib.lookups, 2);
+    });
+
+    test('kept plain lyrics stay when the check cannot be made', () async {
+      final track = await song('UNTOUCHABLE');
+      lrclib.answer = const LrclibRecord(plain: 'Plain');
+      await lyricsOf(store(), track);
+
+      now = now.add(const Duration(days: 4));
+      lrclib.unavailable = true;
+      expect((await lyricsOf(store(), track))?.lines.single.text, 'Plain');
+    });
+
+    test('kept timed lyrics are never asked about again', () async {
+      final track = await song('CAKE');
+      lrclib.answer = const LrclibRecord(synced: '[00:01.00]Timed');
+      await lyricsOf(store(), track);
+
+      now = now.add(const Duration(days: 365));
+      await lyricsOf(store(), track);
+      expect(lrclib.lookups, 1);
+    });
+
+    test('1.4.x answers keep timed lyrics and re-check the rest', () async {
+      final timed = await song('CAKE');
+      final bare = await song('DALLA DALLA');
+      lrclib.answer = const LrclibRecord(synced: '[00:01.00]Timed');
+      await lyricsOf(store(), timed);
+      lrclib.answer = const LrclibRecord(instrumental: true);
+      await lyricsOf(store(), bare);
+      // Rewrite both as version 2 left them.
+      await for (final f in Directory('${support.path}/lyrics').list()) {
+        final file = f as File;
+        final json = jsonDecode(await file.readAsString()) as Map;
+        await file.writeAsString(jsonEncode({...json, 'version': 2}));
+      }
+
+      lrclib.answer = const LrclibRecord(synced: '[00:01.00]DALLA DALLA');
+      expect((await lyricsOf(store(), timed))?.lines.single.text, 'Timed');
+      expect((await lyricsOf(store(), bare))?.lines.single.text, 'DALLA DALLA');
+      expect(lrclib.lookups, 3);
+    });
+
+    test('a kept answer flagged instrumental with lyrics shows them', () async {
+      // How 1.4.1 saved DALLA DALLA: the flag and the lyrics side by side.
+      final track = await song('DALLA DALLA');
+      lrclib.answer = LrclibRecord.fromJson({
+        'syncedLyrics': '[00:01.00]DALLA DALLA',
+      });
+      await lyricsOf(store(), track);
+      final file =
+          (await Directory('${support.path}/lyrics').list().first) as File;
+      final json = jsonDecode(await file.readAsString()) as Map;
+      await file.writeAsString(jsonEncode({...json, 'instrumental': true}));
+
+      final again = await lyricsOf(store(), track);
+      expect(again?.instrumental, isFalse);
+      expect(again?.lines.single.text, 'DALLA DALLA');
     });
   });
 }

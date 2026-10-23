@@ -792,6 +792,33 @@ void main() {
       expect(tester.takeException(), isNull);
     });
 
+    testWidgets('an unreachable lrclib.net says so, and a tap asks again', (
+      tester,
+    ) async {
+      const unreachable = "couldn't reach lrclib.net\ntap to try again";
+      await pumpApp(tester);
+      await tester.tap(find.text('CAKE').first);
+      await tester.pumpAndSettle();
+
+      lrclib.unavailable = true;
+      await showLyrics(tester);
+      expect(find.text(unreachable), findsOneWidget);
+      expect(find.text('no lyrics found'), findsNothing);
+
+      // The tap's lookup, made ahead under `runAsync` like [showLyrics]'s.
+      lrclib.unavailable = false;
+      await tester.runAsync(
+        () => LyricsStore.instance.forTrack(player.currentTrack!, retry: true),
+      );
+      await tester.tap(find.text(unreachable));
+      await tester.pump();
+      await tester.runAsync(() => Future<void>.delayed(Duration.zero));
+      await tester.pumpAndSettle();
+
+      expect(find.text('First line'), findsOneWidget);
+      expect(lrclib.lookups, 2);
+    });
+
     testWidgets('a short window scrolls the panel instead of overflowing', (
       tester,
     ) async {
