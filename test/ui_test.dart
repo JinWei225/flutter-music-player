@@ -1088,6 +1088,20 @@ void main() {
       expect(player.shuffle, isFalse);
     });
 
+    testWidgets('a control link\'s id is reported once it has played', (
+      tester,
+    ) async {
+      await pumpApp(tester);
+      AppLinks.instance.handled.value = null;
+
+      AppLinks.instance.receive('mewsic://control?do=shuffle-all&id=k3x9');
+      await tester.pumpAndSettle();
+
+      expect(AppLinks.instance.handled.value, 'k3x9');
+      expect(player.isPlaying, isTrue);
+      expect(player.currentTrack, isNotNull);
+    });
+
     testWidgets('an album no longer in the library says so', (tester) async {
       await pumpApp(tester);
 

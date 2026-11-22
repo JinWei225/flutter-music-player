@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart' hide RepeatMode;
 import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
@@ -108,8 +110,8 @@ class _AppShellState extends State<AppShell> {
         _runAlbum(link);
       case SongLink():
         _runSong(link);
-      case ControlLink(:final action):
-        _runControl(action);
+      case ControlLink():
+        _runControl(link);
       case SearchLink(:final query):
         _openPrompt(query);
     }
@@ -175,20 +177,66 @@ class _AppShellState extends State<AppShell> {
     );
   }
 
-  void _runControl(ControlAction action) {
+  /// Gives the player a command, then, when the link carried an id, waits
+  /// for the command to show in the player before reporting the id back.
+  /// The player calls are not awaited for that: starting playback only
+  /// completes once playback stops again.
+  Future<void> _runControl(ControlLink link) async {
     final player = context.read<PlayerModel>();
-    switch (action) {
+    final wasPlaying = player.isPlaying;
+    final wasTrack = player.currentTrack;
+    final wasPosition = player.currentQueuePosition;
+    var patience = const Duration(seconds: 3);
+    final bool Function() done;
+    switch (link.action) {
       case ControlAction.playPause:
         player.togglePlayPause();
+        done = () => player.isPlaying != wasPlaying || !player.hasTrack;
       case ControlAction.next:
         player.next();
+        // At the end of the list with repeat off, next pauses instead.
+        done = () =>
+            player.currentQueuePosition != wasPosition ||
+            player.isPlaying != wasPlaying ||
+            !player.hasTrack;
       case ControlAction.previous:
         player.previous();
+        // Restarting the song it is already on changes nothing to watch.
+        patience = const Duration(milliseconds: 500);
+        done = () =>
+            player.currentQueuePosition != wasPosition || !player.hasTrack;
       case ControlAction.shuffle:
         player.toggleShuffle();
+        done = () => true;
       case ControlAction.shuffleAll:
         player.playTracks(_library.sortedTracks, shuffle: true);
+        done = () =>
+            (player.isPlaying && player.currentTrack != wasTrack) ||
+            _library.trackCount == 0;
     }
+    final id = link.id;
+    if (id == null) return;
+    await _until(player, done, patience);
+    AppLinks.instance.handled.value = id;
+  }
+
+  /// Completes once [done] holds, checked whenever [source] changes, or
+  /// after [patience] at the latest.
+  static Future<void> _until(
+    Listenable source,
+    bool Function() done,
+    Duration patience,
+  ) {
+    if (done()) return Future.value();
+    final reached = Completer<void>();
+    void check() {
+      if (done() && !reached.isCompleted) reached.complete();
+    }
+
+    source.addListener(check);
+    return reached.future
+        .timeout(patience, onTimeout: () {})
+        .whenComplete(() => source.removeListener(check));
   }
 
   void _say(String message) {

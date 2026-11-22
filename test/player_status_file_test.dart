@@ -5,6 +5,7 @@ import 'package:custom_music_player/core/models/track.dart';
 import 'package:custom_music_player/core/player/player_model.dart';
 import 'package:custom_music_player/platform/player_status_file.dart';
 import 'package:custom_music_player/platform/settings_store.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
@@ -47,6 +48,20 @@ void main() {
     final json = await read();
     expect(json['playing'], isFalse);
     expect(json['track'], isNull);
+  });
+
+  test('reports the last command carried out', () async {
+    final handled = ValueNotifier<String?>(null);
+    status.dispose();
+    status = PlayerStatusFile(
+      player,
+      handled: handled,
+      directory: () async => dir,
+    )..start();
+    expect((await read())['handled'], isNull);
+
+    handled.value = 'k3x9';
+    expect((await read())['handled'], 'k3x9');
   });
 
   test('follows the song, play state and shuffle', () async {

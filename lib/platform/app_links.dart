@@ -14,6 +14,10 @@ class AppLinks {
   static const _channel = MethodChannel('com.jinwei.custom_music_player/links');
 
   final _waiting = <LibraryLink>[];
+
+  /// The id of the last control link carried out (see [ControlLink.id]);
+  /// `player.json` reports it so the sender knows its command took effect.
+  final handled = ValueNotifier<String?>(null);
   ValueChanged<LibraryLink>? _listener;
 
   /// Starts taking links from the platform, including any that arrived

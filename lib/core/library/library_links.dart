@@ -10,7 +10,8 @@ import '../models/track.dart';
 ///  * `mewsic://song?path=/…/Air.m4a` plays that song, with the rest of its
 ///    album queued after it; `&action=next` queues just the song instead.
 ///  * `mewsic://control?do=play-pause` (or `next`, `previous`, `shuffle`,
-///    `shuffle-all`) drives the player, like the media keys.
+///    `shuffle-all`) drives the player, like the media keys. An `&id=…`
+///    is written back to `player.json` once the command has taken effect.
 ///  * `mewsic://search?q=nayeon` opens the prompt with "nayeon" typed in.
 sealed class LibraryLink {
   const LibraryLink();
@@ -46,7 +47,7 @@ sealed class LibraryLink {
         return SongLink(path, action: action ?? SongAction.play);
       case 'control':
         final action = ControlAction.byName(params['do']);
-        return action == null ? null : ControlLink(action);
+        return action == null ? null : ControlLink(action, id: params['id']);
       case 'search':
         return SearchLink(params['q'] ?? '');
     }
@@ -238,19 +239,24 @@ enum ControlAction {
 class ControlLink extends LibraryLink {
   final ControlAction action;
 
-  const ControlLink(this.action);
+  /// Chosen by whoever sent the link, and reported back once the command
+  /// has taken effect, so they can tell its result from a change that
+  /// happened to come first (a cold start's empty player, say).
+  final String? id;
+
+  const ControlLink(this.action, {this.id});
 
   @override
   Uri get uri => Uri(
     scheme: LibraryLink.scheme,
     host: 'control',
-    queryParameters: {'do': action.word},
+    queryParameters: {'do': action.word, 'id': ?id},
   );
 
   @override
   bool operator ==(Object other) =>
-      other is ControlLink && other.action == action;
+      other is ControlLink && other.action == action && other.id == id;
 
   @override
-  int get hashCode => action.hashCode;
+  int get hashCode => Object.hash(action, id);
 }

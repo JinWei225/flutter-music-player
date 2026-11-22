@@ -12,6 +12,8 @@ export type Control = "play-pause" | "next" | "previous" | "shuffle" | "shuffle-
 
 /** What Mewsic writes to player.json whenever the song, play state or shuffle changes. */
 interface PlayerStatus {
+  /** The id of the last control link Mewsic carried out. */
+  handled: string | null;
   playing: boolean;
   shuffle: boolean;
   repeat: string;
@@ -20,31 +22,33 @@ interface PlayerStatus {
 
 const STATUS_PATH = join(SHARED_FOLDER, "player.json");
 
-async function readStatus(): Promise<string | null> {
+async function readStatus(): Promise<PlayerStatus | null> {
   try {
-    return await readFile(STATUS_PATH, "utf8");
+    return JSON.parse(await readFile(STATUS_PATH, "utf8")) as PlayerStatus;
   } catch {
+    // Missing, or caught mid-rename: try again on the next poll.
     return null;
   }
 }
 
 /**
  * Sends [control] to Mewsic, leaving it in the background, then says what
- * happened: Mewsic rewrites player.json once the command has taken effect,
- * so we wait for that (a few seconds at most, as a cold start or a library
- * scan for "shuffle all" takes a moment) and describe the new state.
+ * happened. The link carries an id, which Mewsic writes back to player.json
+ * once the command has taken effect; we wait for that rather than for any
+ * change to the file, because a cold start first rewrites it with the fresh
+ * app's empty player. "Shuffle all" may also wait for the library scan, so
+ * the wait is generous; it ends as soon as the id shows up.
  */
 export async function runControl(control: Control) {
-  const before = await readStatus();
-  await openLink(`mewsic://control?do=${control}`, { background: true });
+  const id = `${Date.now().toString(36)}${Math.random().toString(36).slice(2, 8)}`;
+  await openLink(`mewsic://control?do=${control}&id=${id}`, { background: true });
 
-  let text = before;
-  for (let waited = 0; waited < 5000; waited += 100) {
+  let status: PlayerStatus | null = null;
+  for (let waited = 0; waited < 15000; waited += 100) {
     await new Promise((resolve) => setTimeout(resolve, 100));
-    text = await readStatus();
-    if (text !== null && text !== before) break;
+    status = (await readStatus()) ?? status;
+    if (status?.handled === id) break;
   }
-  const status = text ? (JSON.parse(text) as PlayerStatus) : null;
   await showHUD(describe(control, status));
 }
 

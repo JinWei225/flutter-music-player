@@ -5,20 +5,31 @@ import 'package:flutter/foundation.dart';
 
 import '../core/player/player_model.dart';
 import 'album_catalog.dart';
+import 'app_links.dart';
 
 /// Keeps `player.json` beside the album catalog up to date with what the
 /// player is doing: the song, whether it is playing, shuffle and repeat.
 ///
 /// The Raycast extension's media commands read it after sending a command,
 /// so they can say "Shuffle on" or name the next song rather than only
-/// "Done". It is written only when one of those changes, never for the
+/// "Done". `handled` names the last command carried out: the extension
+/// waits for its own, since on a cold start the file first changes to the
+/// fresh app's empty player, before the command has run. It is written only when one of those changes, never for the
 /// playback position, so it costs nothing while a song plays on.
 class PlayerStatusFile {
   final PlayerModel player;
+
+  /// The id of the last control link carried out, reported as `handled`.
+  final ValueListenable<String?> handled;
+
   final Future<Directory?> Function() _directory;
 
-  PlayerStatusFile(this.player, {Future<Directory?> Function()? directory})
-    : _directory = directory ?? AlbumCatalog.sharedFolder;
+  PlayerStatusFile(
+    this.player, {
+    ValueListenable<String?>? handled,
+    Future<Directory?> Function()? directory,
+  }) : handled = handled ?? AppLinks.instance.handled,
+       _directory = directory ?? AlbumCatalog.sharedFolder;
 
   static const fileName = 'player.json';
 
@@ -27,10 +38,14 @@ class PlayerStatusFile {
 
   void start() {
     player.addListener(_onPlayer);
+    handled.addListener(_onPlayer);
     _onPlayer();
   }
 
-  void dispose() => player.removeListener(_onPlayer);
+  void dispose() {
+    player.removeListener(_onPlayer);
+    handled.removeListener(_onPlayer);
+  }
 
   /// The file's contents for the player as it is now.
   @visibleForTesting
@@ -41,6 +56,7 @@ class PlayerStatusFile {
       'playing': player.isPlaying,
       'shuffle': player.shuffle,
       'repeat': player.repeat.name,
+      'handled': handled.value,
       'track': track == null
           ? null
           : {

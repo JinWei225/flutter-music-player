@@ -61,6 +61,9 @@ void main() {
         const ControlLink(ControlAction.playPause),
       );
       expect(LibraryLink.parse('mewsic://control?do=rewind'), isNull);
+      const tagged = ControlLink(ControlAction.next, id: 'k3x9');
+      expect(tagged.toString(), 'mewsic://control?do=next&id=k3x9');
+      expect(LibraryLink.parse(tagged.toString()), tagged);
     });
 
     test('only links that name library items wait for the scan', () {
