@@ -94,7 +94,7 @@ class ArtworkCache {
     if (file.existsSync() && file.lengthSync() > 0) return file.uri;
 
     final temp = File('${file.path}.tmp');
-    await temp.writeAsBytes(await _shrink(bytes), flush: true);
+    await temp.writeAsBytes(await shrink(bytes), flush: true);
     await temp.rename(file.path);
 
     // Earlier versions of this album's cover (and the unversioned files older
@@ -123,10 +123,13 @@ class ArtworkCache {
     return hash;
   }
 
-  /// [bytes] scaled down to at most [_maxSide] on the longest side and
+  /// [bytes] scaled down to at most [maxSide] on the longest side and
   /// re-encoded as PNG. Covers already that small, and any the engine cannot
   /// decode, are returned untouched.
-  static Future<Uint8List> _shrink(Uint8List bytes) async {
+  static Future<Uint8List> shrink(
+    Uint8List bytes, {
+    int maxSide = _maxSide,
+  }) async {
     ui.ImmutableBuffer? buffer;
     ui.ImageDescriptor? descriptor;
     ui.Codec? codec;
@@ -134,13 +137,13 @@ class ArtworkCache {
     try {
       buffer = await ui.ImmutableBuffer.fromUint8List(bytes);
       descriptor = await ui.ImageDescriptor.encoded(buffer);
-      if (descriptor.width <= _maxSide && descriptor.height <= _maxSide) {
+      if (descriptor.width <= maxSide && descriptor.height <= maxSide) {
         return bytes;
       }
       final landscape = descriptor.width >= descriptor.height;
       codec = await descriptor.instantiateCodec(
-        targetWidth: landscape ? _maxSide : null,
-        targetHeight: landscape ? null : _maxSide,
+        targetWidth: landscape ? maxSide : null,
+        targetHeight: landscape ? null : maxSide,
       );
       image = (await codec.getNextFrame()).image;
       final png = await image.toByteData(format: ui.ImageByteFormat.png);

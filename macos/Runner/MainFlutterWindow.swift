@@ -10,6 +10,10 @@ class MainFlutterWindow: NSWindow {
 
     RegisterGeneratedPlugins(registry: flutterViewController)
 
+    let messenger = flutterViewController.engine.binaryMessenger
+    LinkRouter.shared.attach(to: messenger)
+    SpotlightIndexer.shared.attach(to: messenger)
+
     super.awakeFromNib()
   }
 }

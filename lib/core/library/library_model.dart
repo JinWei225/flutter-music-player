@@ -37,12 +37,17 @@ class LibraryModel extends ChangeNotifier {
   List<Track> _tracks = const [];
   List<Album> _albums = const [];
   bool _loading = false;
+  bool _loaded = false;
   String? _error;
 
   SortField _sortField = SortField.title;
   SortDirection _sortDirection = SortDirection.ascending;
 
   bool get isLoading => _loading;
+
+  /// True once a scan has finished without error. Until then an empty
+  /// [albums] means "not looked yet", not "no music".
+  bool get hasLoaded => _loaded;
   String? get error => _error;
   List<Album> get albums => _albums;
   int get trackCount => _tracks.length;
@@ -65,6 +70,7 @@ class LibraryModel extends ChangeNotifier {
       _tracks = await source.loadTracks();
       _albums = Album.group(_tracks);
       _sorted = null;
+      _loaded = true;
       // Covers may have been added to the files since they were last read.
       ArtworkStore.instance.clear();
     } catch (e) {

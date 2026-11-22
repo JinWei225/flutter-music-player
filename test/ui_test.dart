@@ -3,9 +3,11 @@ import 'dart:io';
 import 'package:custom_music_player/core/library/library_model.dart';
 import 'package:custom_music_player/core/models/album.dart';
 import 'package:custom_music_player/core/player/player_model.dart';
+import 'package:custom_music_player/platform/app_links.dart';
 import 'package:custom_music_player/platform/lrclib_client.dart';
 import 'package:custom_music_player/platform/lyrics_store.dart';
 import 'package:custom_music_player/platform/settings_store.dart';
+import 'package:custom_music_player/ui/pages/album_detail_page.dart';
 import 'package:custom_music_player/ui/pages/all_songs_page.dart';
 import 'package:custom_music_player/ui/shell.dart';
 import 'package:custom_music_player/ui/theme.dart';
@@ -994,6 +996,62 @@ void main() {
       expect(find.byType(CommandSheet), findsNothing);
       expect(player.queueInPlayOrder.length, 6);
       expect(player.isPlaying, isTrue);
+    });
+  });
+
+  group('mewsic:// links', () {
+    testWidgets('an album link opens that album\'s page', (tester) async {
+      await pumpApp(tester);
+      expect(find.byType(AlbumDetailPage), findsNothing);
+
+      AppLinks.instance.receive(
+        'mewsic://album?name=KILL%20MY%20DOUBT%20-%20EP',
+      );
+      await tester.pumpAndSettle();
+
+      final page = tester.widget<AlbumDetailPage>(
+        find.byType(AlbumDetailPage),
+      );
+      expect(page.album.name, 'KILL MY DOUBT - EP');
+    });
+
+    testWidgets('an album no longer in the library says so', (tester) async {
+      await pumpApp(tester);
+
+      AppLinks.instance.receive('mewsic://album?name=Gone');
+      await tester.pumpAndSettle();
+
+      expect(find.byType(AlbumDetailPage), findsNothing);
+      expect(find.text('No album called "Gone" any more'), findsOneWidget);
+    });
+
+    testWidgets('a search link types into the prompt', (tester) async {
+      await pumpApp(tester);
+
+      AppLinks.instance.receive('mewsic://search?q=kill%20my%20doubt');
+      await tester.pumpAndSettle();
+
+      final field = tester.widget<TextField>(
+        find.descendant(
+          of: find.byType(CommandPrompt),
+          matching: find.byType(TextField),
+        ),
+      );
+      expect(field.controller!.text, 'kill my doubt');
+      expect(field.focusNode!.hasFocus, isTrue);
+      expect(find.byType(CommandResults), findsOneWidget);
+    });
+
+    testWidgets('on a narrow window a search link opens the sheet', (
+      tester,
+    ) async {
+      await pumpApp(tester, size: const Size(400, 860));
+
+      AppLinks.instance.receive('mewsic://search?q=nayeon');
+      await tester.pumpAndSettle();
+
+      expect(find.byType(CommandSheet), findsOneWidget);
+      expect(find.text('nayeon'), findsOneWidget);
     });
   });
 }

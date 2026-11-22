@@ -2,9 +2,11 @@ import 'package:flutter/material.dart' hide RepeatMode;
 import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 
+import '../core/library/library_links.dart';
 import '../core/library/library_model.dart';
 import '../core/models/album.dart';
 import '../core/player/player_model.dart';
+import '../platform/app_links.dart';
 import 'breakpoints.dart';
 import 'pages/album_detail_page.dart';
 import 'pages/albums_page.dart';
@@ -47,15 +49,84 @@ class _AppShellState extends State<AppShell> {
   /// being typed into.
   final FocusNode _promptFocus = FocusNode(debugLabel: 'command prompt');
 
+  /// What is typed into the header prompt; a `mewsic://search` link fills
+  /// it in.
+  final TextEditingController _promptText = TextEditingController();
+
   /// The prompt takes focus once, on the first wide build, so a freshly
   /// opened app can be typed into straight away.
   bool _promptFocusedOnLaunch = false;
 
+  /// An album a link asked for before the library had been scanned.
+  AlbumLink? _waitingAlbum;
+
+  late final LibraryModel _library = context.read<LibraryModel>();
+
+  @override
+  void initState() {
+    super.initState();
+    _library.addListener(_openWaitingAlbum);
+    AppLinks.instance.listener = _onLink;
+  }
+
   @override
   void dispose() {
+    AppLinks.instance.listener = null;
+    _library.removeListener(_openWaitingAlbum);
     _focusNode.dispose();
     _promptFocus.dispose();
+    _promptText.dispose();
     super.dispose();
+  }
+
+  // --- mewsic:// links ------------------------------------------------------
+
+  void _onLink(LibraryLink link) {
+    switch (link) {
+      case AlbumLink():
+        _waitingAlbum = link;
+        _openWaitingAlbum();
+      case SearchLink(:final query):
+        _openPrompt(query);
+    }
+  }
+
+  /// Opens the album a link asked for, once the library can say whether it
+  /// has it. A link from Spotlight can name an album that has since been
+  /// renamed or removed; that is said rather than silently ignored.
+  void _openWaitingAlbum() {
+    final link = _waitingAlbum;
+    if (link == null || !mounted) return;
+    if (_library.isLoading || !_library.hasLoaded) return;
+    _waitingAlbum = null;
+    final album = link.findIn(_library.albums);
+    if (album == null) {
+      ScaffoldMessenger.maybeOf(context)
+        ?..hideCurrentSnackBar()
+        ..showSnackBar(
+          SnackBar(content: Text('No album called "${link.name}" any more')),
+        );
+      return;
+    }
+    setState(() {
+      _section = _Section.albums;
+      _openAlbum = album;
+    });
+    _focusNode.requestFocus();
+  }
+
+  /// The prompt with [query] typed in and its matches showing: the header
+  /// line's on a wide window, the sheet on a narrow one.
+  void _openPrompt(String query) {
+    if (_promptFocus.context != null) {
+      _promptText.value = TextEditingValue(
+        text: query,
+        selection: TextSelection.collapsed(offset: query.length),
+      );
+      _promptFocus.requestFocus();
+    } else {
+      CommandSheet.show(context, query: query);
+    }
   }
 
   /// Open by default only where it does not crowd the library, and only once
@@ -173,6 +244,7 @@ class _AppShellState extends State<AppShell> {
                 path: _path(album),
                 prompt: CommandPrompt(
                   focusNode: _promptFocus,
+                  controller: _promptText,
                   onFinished: () => _focusNode.requestFocus(),
                 ),
               ),

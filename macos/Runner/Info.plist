@@ -18,6 +18,19 @@
 	<string>APPL</string>
 	<key>CFBundleShortVersionString</key>
 	<string>$(FLUTTER_BUILD_NAME)</string>
+	<!-- mewsic:// links open an album or the prompt, from Raycast, Shortcuts,
+	     the open command, or a Spotlight result. -->
+	<key>CFBundleURLTypes</key>
+	<array>
+		<dict>
+			<key>CFBundleURLName</key>
+			<string>com.jinwei.customMusicPlayer.links</string>
+			<key>CFBundleURLSchemes</key>
+			<array>
+				<string>mewsic</string>
+			</array>
+		</dict>
+	</array>
 	<key>CFBundleVersion</key>
 	<string>$(FLUTTER_BUILD_NUMBER)</string>
 	<key>LSMinimumSystemVersion</key>

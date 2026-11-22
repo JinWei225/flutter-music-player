@@ -88,10 +88,15 @@ class CommandPrompt extends StatefulWidget {
   final FocusNode focusNode;
   final VoidCallback onFinished;
 
+  /// What is typed into the prompt. The shell owns it so a `mewsic://search`
+  /// link can fill it in; the prompt clears it after each command.
+  final TextEditingController controller;
+
   const CommandPrompt({
     super.key,
     required this.focusNode,
     required this.onFinished,
+    required this.controller,
   });
 
   @override
@@ -99,7 +104,7 @@ class CommandPrompt extends StatefulWidget {
 }
 
 class _CommandPromptState extends State<CommandPrompt> {
-  final _controller = TextEditingController();
+  TextEditingController get _controller => widget.controller;
   final _overlay = OverlayPortalController();
   final _link = LayerLink();
   int _selected = 0;
@@ -114,7 +119,7 @@ class _CommandPromptState extends State<CommandPrompt> {
   @override
   void dispose() {
     widget.focusNode.removeListener(_sync);
-    _controller.dispose();
+    _controller.removeListener(_onText);
     super.dispose();
   }
 
@@ -277,21 +282,25 @@ class _CommandPromptState extends State<CommandPrompt> {
 /// from the top line. There is no hardware keyboard to "just start typing",
 /// so it is a deliberate tap away instead of always focused.
 class CommandSheet extends StatefulWidget {
-  const CommandSheet({super.key});
+  /// Typed in already when the sheet opens, as a `mewsic://search` link asks.
+  final String initialQuery;
 
-  static Future<void> show(BuildContext context) => showModalBottomSheet(
-    context: context,
-    isScrollControlled: true,
-    useSafeArea: true,
-    builder: (_) => const CommandSheet(),
-  );
+  const CommandSheet({super.key, this.initialQuery = ''});
+
+  static Future<void> show(BuildContext context, {String query = ''}) =>
+      showModalBottomSheet(
+        context: context,
+        isScrollControlled: true,
+        useSafeArea: true,
+        builder: (_) => CommandSheet(initialQuery: query),
+      );
 
   @override
   State<CommandSheet> createState() => _CommandSheetState();
 }
 
 class _CommandSheetState extends State<CommandSheet> {
-  final _controller = TextEditingController();
+  late final _controller = TextEditingController(text: widget.initialQuery);
 
   @override
   void initState() {

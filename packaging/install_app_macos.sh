@@ -50,6 +50,15 @@ rm -rf "$TARGET"
 cp -R "$BUILT" "$TARGET"
 echo "Installed $TARGET"
 
+# Leave /Applications as the only registered copy. Launch Services also
+# knows the build folder's copy, from when it still had the build's ad-hoc
+# signature, and Spotlight then refuses the installed app ("ad-hoc client
+# ... a higher-provenance app also claims it"), so its albums never get
+# indexed.
+LSREGISTER=/System/Library/Frameworks/CoreServices.framework/Frameworks/LaunchServices.framework/Support/lsregister
+"$LSREGISTER" -u "$BUILT" 2>/dev/null || true
+"$LSREGISTER" -f "$TARGET"
+
 if $was_running; then
   open "$TARGET"
   echo "Relaunched."
