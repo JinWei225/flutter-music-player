@@ -167,6 +167,43 @@ access; if it was declined, turn it back on in *System Settings → Privacy &
 Security → Media & Apple Music* and reopen the app. Until then Mewsic says so
 on its empty state instead of pretending the library is empty.
 
+#### Spotlight, Raycast and `mewsic://` links
+
+After each scan the Mac app puts its albums into Spotlight; picking one opens
+it in Mewsic. It also answers `mewsic://` links, from Shortcuts, `open`, or
+anything else that opens URLs:
+
+| Link | Does |
+| --- | --- |
+| `mewsic://album?name=NA&artist=NAYEON` | opens the album's page |
+| `…&action=play` / `shuffle` / `next` | plays it, shuffles it, or queues it after the current song |
+| `mewsic://song?path=/…/Air.m4a` | plays the song, its album carrying on after it |
+| `…&action=next` | queues just the song after the current one |
+| `mewsic://control?do=play-pause` | also `next`, `previous`, `shuffle` (on/off) and `shuffle-all` |
+| `mewsic://search?q=nayeon` | opens the prompt with the text typed in |
+
+The Raycast extension in `raycast/` has:
+
+- **Search Albums**: a grid of covers. ⏎ plays, ⌘S shuffles, ⌘N queues
+  next, ⌘O opens the album in Mewsic, ⌘↵ lists its songs.
+- **Search Songs**: every song, matched on title, artist or album. ⏎ plays
+  it, ⌘N queues it next.
+- **Play / Pause**, **Next Song**, **Previous Song**, **Toggle Shuffle** and
+  **Shuffle All Songs**, which can each be given a hotkey in Raycast. Each
+  says what it did ("Playing CAKE — ITZY", "Shuffle on").
+
+Mewsic stays in the background for all of them. The extension reads the
+album list and player state Mewsic writes to
+`~/Library/Application Support/Mewsic/`, so open Mewsic once first. To
+install it:
+
+```bash
+cd raycast && npm install && npm run dev
+```
+
+`npm run dev` adds it to Raycast and rebuilds on every change. Stop it once
+the command shows up; the extension stays installed.
+
 ### Windows
 
 Needs Visual Studio 2022 with the **Desktop development with C++** workload

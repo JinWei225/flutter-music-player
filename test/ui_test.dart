@@ -1015,6 +1015,79 @@ void main() {
       expect(page.album.name, 'KILL MY DOUBT - EP');
     });
 
+    testWidgets('a play link plays the album and leaves the page alone', (
+      tester,
+    ) async {
+      await pumpApp(tester);
+
+      AppLinks.instance.receive(
+        'mewsic://album?name=KILL%20MY%20DOUBT%20-%20EP&action=play',
+      );
+      await tester.pumpAndSettle();
+
+      expect(player.isPlaying, isTrue);
+      expect(player.queueInPlayOrder.map((t) => t.album).toSet(), {
+        'KILL MY DOUBT - EP',
+      });
+      expect(player.queueInPlayOrder.first.trackNumber, 1);
+      expect(find.byType(AlbumDetailPage), findsNothing);
+    });
+
+    testWidgets('a shuffle link shuffles the album', (tester) async {
+      await pumpApp(tester);
+
+      AppLinks.instance.receive(
+        'mewsic://album?name=KILL%20MY%20DOUBT%20-%20EP&action=shuffle',
+      );
+      await tester.pumpAndSettle();
+
+      expect(player.isPlaying, isTrue);
+      expect(player.shuffle, isTrue);
+      expect(player.queueInPlayOrder, hasLength(6));
+    });
+
+    testWidgets('a song link plays from that song, its album after it', (
+      tester,
+    ) async {
+      await pumpApp(tester);
+      final album = library.albums.firstWhere(
+        (a) => a.name == 'KILL MY DOUBT - EP',
+      );
+      final third = album.tracks[2];
+
+      final path = Uri.encodeQueryComponent(third.path);
+      AppLinks.instance.receive('mewsic://song?path=$path');
+      await tester.pumpAndSettle();
+
+      expect(player.currentTrack, third);
+      expect(player.queueInPlayOrder, album.tracks);
+    });
+
+    testWidgets('control links drive the player', (tester) async {
+      await pumpApp(tester);
+      Future<void> send(String what) async {
+        AppLinks.instance.receive('mewsic://control?do=$what');
+        await tester.pumpAndSettle();
+      }
+
+      await send('shuffle-all');
+      expect(player.isPlaying, isTrue);
+      expect(player.shuffle, isTrue);
+      expect(player.queueInPlayOrder, hasLength(library.trackCount));
+
+      final first = player.currentTrack;
+      await send('next');
+      expect(player.currentTrack, isNot(first));
+
+      await send('play-pause');
+      expect(player.isPlaying, isFalse);
+      await send('play-pause');
+      expect(player.isPlaying, isTrue);
+
+      await send('shuffle');
+      expect(player.shuffle, isFalse);
+    });
+
     testWidgets('an album no longer in the library says so', (tester) async {
       await pumpApp(tester);
 

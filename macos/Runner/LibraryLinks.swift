@@ -152,3 +152,27 @@ final class SpotlightIndexer {
     }
   }
 }
+
+/// Names the folder the app shares its album list in, for the Raycast
+/// extension: ~/Library/Application Support/Mewsic in the user's real home.
+/// Dart cannot work that out itself, because inside the sandbox HOME points
+/// at the app's container. The entitlements let the app write there.
+enum CatalogLocation {
+  static func attach(to messenger: FlutterBinaryMessenger) {
+    let channel = FlutterMethodChannel(
+      name: "com.jinwei.custom_music_player/catalog",
+      binaryMessenger: messenger
+    )
+    channel.setMethodCallHandler { call, result in
+      guard call.method == "directory" else {
+        result(FlutterMethodNotImplemented)
+        return
+      }
+      guard let entry = getpwuid(getuid()), let home = entry.pointee.pw_dir else {
+        result(nil)
+        return
+      }
+      result(String(cString: home) + "/Library/Application Support/Mewsic")
+    }
+  }
+}

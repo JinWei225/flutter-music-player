@@ -1,0 +1,80 @@
+{
+  "$schema": "https://www.raycast.com/schemas/extension.json",
+  "name": "mewsic",
+  "title": "Mewsic",
+  "description": "Search the albums and songs in your Mewsic library, play them without leaving Raycast, and control playback.",
+  "icon": "icon.png",
+  "author": "jinwei225",
+  "platforms": [
+    "macOS"
+  ],
+  "categories": [
+    "Media"
+  ],
+  "license": "MIT",
+  "commands": [
+    {
+      "name": "search-albums",
+      "title": "Search Albums",
+      "subtitle": "Mewsic",
+      "description": "Find an album in your Mewsic library and play, shuffle, queue or open it.",
+      "mode": "view"
+    },
+    {
+      "name": "search-songs",
+      "title": "Search Songs",
+      "subtitle": "Mewsic",
+      "description": "Find a song in your Mewsic library and play it (its album carries on after it) or queue it next.",
+      "mode": "view"
+    },
+    {
+      "name": "play-pause",
+      "title": "Play / Pause",
+      "subtitle": "Mewsic",
+      "description": "Play or pause Mewsic.",
+      "mode": "no-view"
+    },
+    {
+      "name": "next-track",
+      "title": "Next Song",
+      "subtitle": "Mewsic",
+      "description": "Skip to the next song in Mewsic.",
+      "mode": "no-view"
+    },
+    {
+      "name": "previous-track",
+      "title": "Previous Song",
+      "subtitle": "Mewsic",
+      "description": "Go back to the previous song, or to the start of this one if it is a few seconds in.",
+      "mode": "no-view"
+    },
+    {
+      "name": "toggle-shuffle",
+      "title": "Toggle Shuffle",
+      "subtitle": "Mewsic",
+      "description": "Turn shuffle on or off in Mewsic.",
+      "mode": "no-view"
+    },
+    {
+      "name": "shuffle-all",
+      "title": "Shuffle All Songs",
+      "subtitle": "Mewsic",
+      "description": "Play your whole Mewsic library shuffled.",
+      "mode": "no-view"
+    }
+  ],
+  "dependencies": {
+    "@raycast/api": "2.11.1",
+    "@raycast/utils": "2.3.3"
+  },
+  "devDependencies": {
+    "@types/node": "26.6.5",
+    "@types/react": "19.3.0",
+    "typescript": "5.9.3"
+  },
+  "scripts": {
+    "build": "ray build",
+    "dev": "ray develop",
+    "typecheck": "tsc --noEmit"
+  }
+}

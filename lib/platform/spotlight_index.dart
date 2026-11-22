@@ -1,16 +1,13 @@
-import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
-import 'package:mewsic_tagfix/mewsic_tagfix.dart';
 import 'package:path_provider/path_provider.dart';
 
 import '../core/library/library_links.dart';
-import '../core/library/library_model.dart';
 import '../core/models/album.dart';
-import 'artwork_cache.dart';
+import 'library_mirror.dart';
 
 /// Keeps the library's albums in macOS Spotlight, so typing an album's name
 /// there offers it, with its cover, and picking it opens the album here.
@@ -19,25 +16,17 @@ import 'artwork_cache.dart';
 /// opens when the result is chosen. After every scan the albums are compared
 /// with what was sent last time (remembered in a small file), and only new
 /// or changed albums are sent; albums no longer in the library are removed.
-/// A cover counts as changed when its file's modification time does, which
-/// is what `mewsic-tagfix` embedding a cover looks like from here.
-class SpotlightIndex {
-  final LibraryModel library;
-
-  /// How long the library must stay still before it is indexed, so a burst
-  /// of tag edits sends one update rather than one per edit.
-  final Duration settle;
-
+class SpotlightIndex extends LibraryMirror {
   final Future<File> Function() _stateFile;
   final Future<Uint8List?> Function(Album album) _coverFor;
 
   SpotlightIndex(
-    this.library, {
-    this.settle = const Duration(seconds: 2),
+    super.library, {
+    super.settle,
     Future<File> Function()? stateFile,
     Future<Uint8List?> Function(Album album)? coverFor,
   }) : _stateFile = stateFile ?? _defaultStateFile,
-       _coverFor = coverFor ?? _readCover;
+       _coverFor = coverFor ?? readAlbumCover;
 
   static const _channel = MethodChannel(
     'com.jinwei.custom_music_player/spotlight',
@@ -49,59 +38,11 @@ class SpotlightIndex {
   /// Albums per message: covers make each one a few tens of kilobytes.
   static const _batchSize = 20;
 
-  /// Longest side of the cover Spotlight is given. Its preview shows the
-  /// thumbnail at most a little over 100 points across.
-  static const coverSide = 256;
+  @override
+  String get name => 'Spotlight';
 
-  Timer? _timer;
-  Future<void>? _running;
-  bool _again = false;
-
-  void start() {
-    library.addListener(_onLibrary);
-    _onLibrary();
-  }
-
-  void dispose() {
-    library.removeListener(_onLibrary);
-    _timer?.cancel();
-  }
-
-  void _onLibrary() {
-    // A failed scan leaves the library empty; that is not a reason to take
-    // every album out of Spotlight.
-    if (library.isLoading || !library.hasLoaded || library.error != null) {
-      return;
-    }
-    _timer?.cancel();
-    _timer = Timer(settle, sync);
-  }
-
-  /// Brings Spotlight in line with the library. A call made while one is
-  /// running waits for it and then runs again, so the last state wins.
-  Future<void> sync() {
-    final running = _running;
-    if (running != null) {
-      _again = true;
-      return running;
-    }
-    return _running = _loop().whenComplete(() {
-      _running = null;
-    });
-  }
-
-  Future<void> _loop() async {
-    do {
-      _again = false;
-      try {
-        await _syncOnce();
-      } catch (e) {
-        debugPrint('Could not update Spotlight: $e');
-      }
-    } while (_again);
-  }
-
-  Future<void> _syncOnce() async {
+  @override
+  Future<void> syncOnce() async {
     if (await _channel.invokeMethod<bool>('isAvailable') != true) return;
 
     final file = await _stateFile();
@@ -139,7 +80,7 @@ class SpotlightIndex {
     }
 
     for (final MapEntry(key: id, value: album) in albums.entries) {
-      final signature = await _signature(album);
+      final signature = await albumSignature(album);
       if (sent[id] == signature) continue;
       final cover = await _coverFor(album);
       batch.add({
@@ -155,41 +96,6 @@ class SpotlightIndex {
       if (batch.length >= _batchSize) await flush();
     }
     await flush();
-  }
-
-  /// Everything an item shows, plus the cover file's modification time.
-  static Future<String> _signature(Album album) async {
-    final path = _coverPath(album);
-    final modified = path == null
-        ? 0
-        : (await File(path).stat()).modified.millisecondsSinceEpoch;
-    return [
-      album.year ?? '',
-      album.tracks.length,
-      album.totalDuration.inSeconds,
-      modified,
-    ].join('|');
-  }
-
-  /// The file the album's cover is read from: its first track on disk.
-  static String? _coverPath(Album album) {
-    for (final t in album.tracks) {
-      if (t.filePath != null) return t.filePath;
-    }
-    return null;
-  }
-
-  static Future<Uint8List?> _readCover(Album album) async {
-    final path = _coverPath(album);
-    if (path == null) return null;
-    try {
-      final bytes = await TagReader.readArtwork(File(path));
-      if (bytes == null || bytes.isEmpty) return null;
-      return await ArtworkCache.shrink(bytes, maxSide: coverSide);
-    } catch (e) {
-      debugPrint('Could not read the cover of ${album.name}: $e');
-      return null;
-    }
   }
 
   static Future<File> _defaultStateFile() async {

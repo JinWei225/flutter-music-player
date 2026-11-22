@@ -8,10 +8,12 @@ import 'package:provider/provider.dart';
 import 'core/library/library_model.dart';
 import 'core/player/audio_backend.dart';
 import 'core/player/player_model.dart';
+import 'platform/album_catalog.dart';
 import 'platform/app_links.dart';
 import 'platform/library_source.dart';
 import 'platform/media_session.dart';
 import 'platform/media_store_library_source.dart';
+import 'platform/player_status_file.dart';
 import 'platform/settings_store.dart';
 import 'platform/spotlight_index.dart';
 import 'ui/shell.dart';
@@ -75,10 +77,13 @@ Future<void> main() async {
   // Scan after the first frame so the window appears immediately.
   library.load();
 
-  // On macOS, albums go into Spotlight, and mewsic:// links (from a
-  // Spotlight result, Raycast, Shortcuts or `open`) open them here.
+  // On macOS, albums go into Spotlight and into a file the Raycast
+  // extension reads, and mewsic:// links (from either of those, Shortcuts
+  // or `open`) open or play them here.
   if (Platform.isMacOS) {
     SpotlightIndex(library).start();
+    AlbumCatalog(library).start();
+    PlayerStatusFile(player).start();
     AppLinks.instance.start();
   }
 }

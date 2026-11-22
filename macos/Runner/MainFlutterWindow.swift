@@ -13,6 +13,7 @@ class MainFlutterWindow: NSWindow {
     let messenger = flutterViewController.engine.binaryMessenger
     LinkRouter.shared.attach(to: messenger)
     SpotlightIndexer.shared.attach(to: messenger)
+    CatalogLocation.attach(to: messenger)
 
     super.awakeFromNib()
   }

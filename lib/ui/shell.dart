@@ -2,6 +2,7 @@ import 'package:flutter/material.dart' hide RepeatMode;
 import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 
+import '../core/library/command_search.dart';
 import '../core/library/library_links.dart';
 import '../core/library/library_model.dart';
 import '../core/models/album.dart';
@@ -57,22 +58,23 @@ class _AppShellState extends State<AppShell> {
   /// opened app can be typed into straight away.
   bool _promptFocusedOnLaunch = false;
 
-  /// An album a link asked for before the library had been scanned.
-  AlbumLink? _waitingAlbum;
+  /// A link that names something in the library, waiting for the first
+  /// scan to finish so it can be looked up.
+  LibraryLink? _waiting;
 
   late final LibraryModel _library = context.read<LibraryModel>();
 
   @override
   void initState() {
     super.initState();
-    _library.addListener(_openWaitingAlbum);
+    _library.addListener(_runWaiting);
     AppLinks.instance.listener = _onLink;
   }
 
   @override
   void dispose() {
     AppLinks.instance.listener = null;
-    _library.removeListener(_openWaitingAlbum);
+    _library.removeListener(_runWaiting);
     _focusNode.dispose();
     _promptFocus.dispose();
     _promptText.dispose();
@@ -82,30 +84,65 @@ class _AppShellState extends State<AppShell> {
   // --- mewsic:// links ------------------------------------------------------
 
   void _onLink(LibraryLink link) {
+    if (link.needsLibrary) {
+      _waiting = link;
+      _runWaiting();
+    } else {
+      _run(link);
+    }
+  }
+
+  /// Carries out the waiting link once the library can say whether it has
+  /// what the link names.
+  void _runWaiting() {
+    final link = _waiting;
+    if (link == null || !mounted) return;
+    if (_library.isLoading || !_library.hasLoaded) return;
+    _waiting = null;
+    _run(link);
+  }
+
+  void _run(LibraryLink link) {
     switch (link) {
       case AlbumLink():
-        _waitingAlbum = link;
-        _openWaitingAlbum();
+        _runAlbum(link);
+      case SongLink():
+        _runSong(link);
+      case ControlLink(:final action):
+        _runControl(action);
       case SearchLink(:final query):
         _openPrompt(query);
     }
   }
 
-  /// Opens the album a link asked for, once the library can say whether it
-  /// has it. A link from Spotlight can name an album that has since been
-  /// renamed or removed; that is said rather than silently ignored.
-  void _openWaitingAlbum() {
-    final link = _waitingAlbum;
-    if (link == null || !mounted) return;
-    if (_library.isLoading || !_library.hasLoaded) return;
-    _waitingAlbum = null;
+  /// Opens or plays the album a link names. A link from Spotlight or Raycast
+  /// can name an album that has since been renamed or removed; that is said
+  /// rather than silently ignored.
+  void _runAlbum(AlbumLink link) {
     final album = link.findIn(_library.albums);
     if (album == null) {
-      ScaffoldMessenger.maybeOf(context)
-        ?..hideCurrentSnackBar()
-        ..showSnackBar(
-          SnackBar(content: Text('No album called "${link.name}" any more')),
-        );
+      _say('No album called "${link.name}" any more');
+      return;
+    }
+    final verb = switch (link.action) {
+      AlbumAction.open => null,
+      AlbumAction.play => CommandVerb.play,
+      AlbumAction.shuffle => CommandVerb.shuffle,
+      AlbumAction.next => CommandVerb.next,
+    };
+    if (verb != null) {
+      // Played as if picked from the prompt; the page stays where it was.
+      runCommand(
+        context,
+        verb,
+        CommandMatch(
+          kind: MatchKind.album,
+          label: album.name,
+          tracks: album.tracks,
+          album: album,
+          score: 0,
+        ),
+      );
       return;
     }
     setState(() {
@@ -113,6 +150,51 @@ class _AppShellState extends State<AppShell> {
       _openAlbum = album;
     });
     _focusNode.requestFocus();
+  }
+
+  /// Plays a song from its album, or queues just the song, as picking it in
+  /// the prompt would.
+  void _runSong(SongLink link) {
+    final found = link.findIn(_library.albums);
+    if (found == null) {
+      _say('That song is no longer in the library');
+      return;
+    }
+    final (album, index) = found;
+    runCommand(
+      context,
+      link.action == SongAction.next ? CommandVerb.next : CommandVerb.play,
+      CommandMatch(
+        kind: MatchKind.song,
+        label: album.tracks[index].title,
+        tracks: album.tracks,
+        startIndex: index,
+        album: album,
+        score: 0,
+      ),
+    );
+  }
+
+  void _runControl(ControlAction action) {
+    final player = context.read<PlayerModel>();
+    switch (action) {
+      case ControlAction.playPause:
+        player.togglePlayPause();
+      case ControlAction.next:
+        player.next();
+      case ControlAction.previous:
+        player.previous();
+      case ControlAction.shuffle:
+        player.toggleShuffle();
+      case ControlAction.shuffleAll:
+        player.playTracks(_library.sortedTracks, shuffle: true);
+    }
+  }
+
+  void _say(String message) {
+    ScaffoldMessenger.maybeOf(context)
+      ?..hideCurrentSnackBar()
+      ..showSnackBar(SnackBar(content: Text(message)));
   }
 
   /// The prompt with [query] typed in and its matches showing: the header

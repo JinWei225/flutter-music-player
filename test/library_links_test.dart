@@ -25,6 +25,52 @@ void main() {
       expect(LibraryLink.parse(link.toString()), link);
     });
 
+    test('album actions survive the round trip; open is left out', () {
+      for (final action in AlbumAction.values) {
+        final link = AlbumLink(name: 'NA', artist: 'NAYEON', action: action);
+        expect(LibraryLink.parse(link.toString()), link);
+        expect(
+          link.toString().contains('action='),
+          action != AlbumAction.open,
+        );
+      }
+    });
+
+    test('an action the app does not know is refused, not opened', () {
+      expect(LibraryLink.parse('mewsic://album?name=NA&action=delete'), isNull);
+    });
+
+    test('song links survive the round trip, paths and all', () {
+      for (final action in SongAction.values) {
+        final link = SongLink(
+          '/Users/me/Music/A & B/01 Air?.m4a',
+          action: action,
+        );
+        expect(LibraryLink.parse(link.toString()), link);
+      }
+      expect(LibraryLink.parse('mewsic://song'), isNull);
+    });
+
+    test('control links name each player command', () {
+      for (final action in ControlAction.values) {
+        final link = ControlLink(action);
+        expect(LibraryLink.parse(link.toString()), link);
+      }
+      expect(
+        LibraryLink.parse('mewsic://control?do=play-pause'),
+        const ControlLink(ControlAction.playPause),
+      );
+      expect(LibraryLink.parse('mewsic://control?do=rewind'), isNull);
+    });
+
+    test('only links that name library items wait for the scan', () {
+      expect(const AlbumLink(name: 'NA').needsLibrary, isTrue);
+      expect(const SongLink('/a.m4a').needsLibrary, isTrue);
+      expect(const ControlLink(ControlAction.shuffleAll).needsLibrary, isTrue);
+      expect(const ControlLink(ControlAction.next).needsLibrary, isFalse);
+      expect(const SearchLink('x').needsLibrary, isFalse);
+    });
+
     test('a search link survives the round trip', () {
       const link = SearchLink('shuffle twice');
       expect(link.toString(), startsWith('mewsic://search?q='));

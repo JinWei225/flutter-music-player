@@ -12,5 +12,12 @@
 	<!-- Outgoing connections, for looking lyrics up on lrclib.net. -->
 	<key>com.apple.security.network.client</key>
 	<true/>
+	<!-- The album list and covers the Raycast extension reads. Kept in the
+	     real ~/Library/Application Support, since other apps cannot read
+	     inside this app's container. -->
+	<key>com.apple.security.temporary-exception.files.home-relative-path.read-write</key>
+	<array>
+		<string>/Library/Application Support/Mewsic/</string>
+	</array>
 </dict>
 </plist>
