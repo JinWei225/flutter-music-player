@@ -3,6 +3,7 @@
 #include <windows.h>
 
 #include "flutter_window.h"
+#include "link_router.h"
 #include "utils.h"
 
 int APIENTRY wWinMain(_In_ HINSTANCE instance, _In_opt_ HINSTANCE prev,
@@ -22,9 +23,19 @@ int APIENTRY wWinMain(_In_ HINSTANCE instance, _In_opt_ HINSTANCE prev,
   std::vector<std::string> command_line_arguments =
       GetCommandLineArguments();
 
+  // One Mewsic at a time: a second launch (a mewsic:// link from Raycast, or
+  // a plain double-click) hands over to the one that is running and exits.
+  const std::string link = mewsic::FindLink(command_line_arguments);
+  if (mewsic::ForwardToRunningInstance(link)) {
+    ::CoUninitialize();
+    return EXIT_SUCCESS;
+  }
+  mewsic::RegisterUrlProtocol();
+
   project.set_dart_entrypoint_arguments(std::move(command_line_arguments));
 
   FlutterWindow window(project);
+  window.StartWithLink(link);
   Win32Window::Point origin(10, 10);
   Win32Window::Size size(1280, 720);
   if (!window.Create(L"Mewsic", origin, size)) {

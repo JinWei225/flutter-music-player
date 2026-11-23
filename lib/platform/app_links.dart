@@ -3,8 +3,10 @@ import 'package:flutter/services.dart';
 
 import '../core/library/library_links.dart';
 
-/// Receives the `mewsic://` links macOS hands the app: opened from Raycast,
-/// Shortcuts or `open`, or picked as a Spotlight result.
+/// Receives the `mewsic://` links the OS hands the app: opened from Raycast,
+/// Shortcuts or `open`, or picked as a Spotlight result on macOS; on Windows
+/// the runner registers the scheme and forwards each link from a second
+/// launch to the running app (windows/runner/link_router.cpp).
 ///
 /// Links that arrive before anyone is listening (the one that launched the
 /// app, typically) are held and delivered once [listener] is set.

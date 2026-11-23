@@ -79,9 +79,10 @@ Future<void> main() async {
 
   // On macOS, albums go into Spotlight and into a file the Raycast
   // extension reads, and mewsic:// links (from either of those, Shortcuts
-  // or `open`) open or play them here.
-  if (Platform.isMacOS) {
-    SpotlightIndex(library).start();
+  // or `open`) open or play them here. Windows has no Spotlight, but shares
+  // the same file and answers the same links for Raycast.
+  if (Platform.isMacOS || Platform.isWindows) {
+    if (Platform.isMacOS) SpotlightIndex(library).start();
     AlbumCatalog(library).start();
     PlayerStatusFile(player).start();
     AppLinks.instance.start();

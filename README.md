@@ -218,6 +218,25 @@ alongside its DLLs and a `data` folder. There is no installer: copy that whole
 folder somewhere such as `C:\Program Files\Mewsic` and make a shortcut to the
 executable. Keep the folder together — the executable will not run on its own.
 
+The executable's icon is `windows/runner/resources/app_icon.ico`, drawn by
+`packaging\make_icon_windows.ps1` (PowerShell only, no Python) from the same
+glyph and colours as `make_icons.py`; re-run it after changing the accent.
+
+#### Raycast and `mewsic://` links on Windows
+
+Each launch registers the `mewsic:` scheme for the current user (no
+administrator rights), and a second launch hands its link to the running app
+and exits, so one Mewsic serves them all. The links in the macOS table above
+work the same way; only albums are not added to a Spotlight index.
+
+The app shares `albums.json`, `player.json` and the covers in
+`%USERPROFILE%\.mewsic\`, which the Raycast extension in `raycast/` reads, so
+run Mewsic once before using it. (Not `%LOCALAPPDATA%`: Raycast is a packaged
+app, and its extensions cannot see files there.) Install it with `npm install && npm run dev`
+in `raycast/`, as on macOS. A link that only plays something starts Mewsic
+minimised and leaves it behind; opening an album or the search prompt brings
+it forward.
+
 ## Releases
 
 Rebuilding on a laptop for every change gets old. Pushing a version tag has

@@ -9,6 +9,12 @@ FlutterWindow::FlutterWindow(const flutter::DartProject& project)
 
 FlutterWindow::~FlutterWindow() {}
 
+void FlutterWindow::StartWithLink(const std::string& link) {
+  if (link.empty()) return;
+  if (!mewsic::WantsForeground(link)) show_command_ = SW_SHOWMINNOACTIVE;
+  link_router_.Open(link);
+}
+
 bool FlutterWindow::OnCreate() {
   if (!Win32Window::OnCreate()) {
     return false;
@@ -25,10 +31,11 @@ bool FlutterWindow::OnCreate() {
     return false;
   }
   RegisterPlugins(flutter_controller_->engine());
+  link_router_.Attach(flutter_controller_->engine()->messenger());
   SetChildContent(flutter_controller_->view()->GetNativeWindow());
 
   flutter_controller_->engine()->SetNextFrameCallback([&]() {
-    this->Show();
+    ::ShowWindow(this->GetHandle(), show_command_);
   });
 
   // Flutter can complete the first frame before the "show window" callback is
@@ -51,6 +58,18 @@ LRESULT
 FlutterWindow::MessageHandler(HWND hwnd, UINT const message,
                               WPARAM const wparam,
                               LPARAM const lparam) noexcept {
+  // A second launch handing over its mewsic:// link (see link_router.h).
+  if (message == WM_COPYDATA) {
+    const auto* data = reinterpret_cast<const COPYDATASTRUCT*>(lparam);
+    if (data != nullptr && data->dwData == mewsic::kLinkMagic) {
+      const std::string link(static_cast<const char*>(data->lpData),
+                             data->cbData);
+      if (mewsic::WantsForeground(link)) mewsic::RaiseWindow(hwnd);
+      if (!link.empty()) link_router_.Open(link);
+      return TRUE;
+    }
+  }
+
   // Give Flutter, including plugins, an opportunity to handle window messages.
   if (flutter_controller_) {
     std::optional<LRESULT> result =

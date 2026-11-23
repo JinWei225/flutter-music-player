@@ -73,7 +73,7 @@ class AlbumCatalog extends LibraryMirror {
           cover = path;
         }
       }
-      if (cover != null) kept.add(cover);
+      if (cover != null) kept.add(_fileName(cover));
 
       albums.add({
         'id': id,
@@ -114,7 +114,8 @@ class AlbumCatalog extends LibraryMirror {
     }
 
     await for (final entry in covers.list()) {
-      if (entry is File && !kept.contains(entry.path)) {
+      // By name: Windows lists '\' where the paths above were joined with '/'.
+      if (entry is File && !kept.contains(_fileName(entry.path))) {
         await entry.delete();
       }
     }
@@ -153,6 +154,9 @@ class AlbumCatalog extends LibraryMirror {
     await temp.rename(file.path);
   }
 
+  static String _fileName(String path) =>
+      path.substring(path.lastIndexOf(RegExp(r'[/\\]')) + 1);
+
   /// FNV-1a of [text], as eight hex digits: short, stable file names.
   static String _hex(String text) {
     var hash = 0x811c9dc5;
@@ -169,7 +173,15 @@ class AlbumCatalog extends LibraryMirror {
   /// `~/Library/Application Support/Mewsic` in the real home folder, which
   /// only the native side can name: inside the sandbox, HOME is the app's
   /// container.
+  ///
+  /// On Windows there is no sandbox: it is `%USERPROFILE%\.mewsic`. Not
+  /// `%LOCALAPPDATA%`: Raycast is a packaged app, and the extensions it runs
+  /// cannot see files there (they read as missing).
   static Future<Directory?> sharedFolder() async {
+    if (Platform.isWindows) {
+      final home = Platform.environment['USERPROFILE'];
+      return home == null || home.isEmpty ? null : Directory('$home\\.mewsic');
+    }
     try {
       final path = await _channel.invokeMethod<String>('directory');
       return path == null ? null : Directory(path);

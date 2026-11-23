@@ -45,7 +45,9 @@ void main() {
     (a) => a['name'] == name,
   );
   List<String> coverFiles() => [
-    for (final f in Directory('${dir.path}/covers').listSync()) f.path,
+    // Windows lists '\'; the catalog writes '/'. Compare them alike.
+    for (final f in Directory('${dir.path}/covers').listSync())
+      f.path.replaceAll('\\', '/'),
   ];
 
   test('writes every album with its links and cover', () async {
@@ -103,7 +105,7 @@ void main() {
 
     final newCover = album('NA')['cover'] as String;
     expect(newCover, isNot(oldCover));
-    expect(coverFiles(), [newCover]);
+    expect(coverFiles(), [newCover.replaceAll('\\', '/')]);
     expect((read()['albums'] as List).map((a) => a['name']), ['NA']);
   });
 

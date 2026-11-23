@@ -6,7 +6,8 @@
   "icon": "icon.png",
   "author": "jinwei225",
   "platforms": [
-    "macOS"
+    "macOS",
+    "Windows"
   ],
   "categories": [
     "Media"
