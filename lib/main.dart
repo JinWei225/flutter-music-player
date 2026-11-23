@@ -117,6 +117,16 @@ class MusicPlayerApp extends StatelessWidget {
           theme: AppTheme.light,
           darkTheme: AppTheme.dark,
           themeMode: theme.mode,
+          // Flutter 3.50's Windows engine crashes (an access violation in
+          // flutter_windows.dll) on the first resize, maximize included, once
+          // anything such as a screen reader or other UI Automation client
+          // has asked for the accessibility tree: the engine logs "Failed to
+          // update ui::AXTree: Nodes left pending" for this app's tree and
+          // then dies. Leaving the tree out on Windows avoids it, at the
+          // price of screen reader support there; revisit on a newer engine.
+          builder: Platform.isWindows
+              ? (context, child) => ExcludeSemantics(child: child!)
+              : null,
           home: const AppShell(),
         ),
       ),
