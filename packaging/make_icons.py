@@ -51,14 +51,17 @@ def rounded_mask(size, radius):
 
 def gradient(size):
     """Vertical accent gradient, drawn at full size then masked."""
-    img = Image.new("RGB", (1, size))
-    px = img.load()
+    # Each row is painted straight onto the full-size image. Stretching a
+    # 1-pixel-wide column with resize() crashes Pillow 12.1.1.
+    img = Image.new("RGB", (size, size))
+    draw = ImageDraw.Draw(img)
     for y in range(size):
         t = y / max(size - 1, 1)
-        px[0, y] = tuple(
+        color = tuple(
             round(ACCENT_TOP[i] + (ACCENT_BOTTOM[i] - ACCENT_TOP[i]) * t) for i in range(3)
         )
-    return img.resize((size, size), Image.NEAREST)
+        draw.line([(0, y), (size - 1, y)], fill=color)
+    return img
 
 
 def make(size, out_dir):
